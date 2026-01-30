@@ -42,43 +42,45 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8): string
   if (stroke.length === 0) return '';
 
   const points = getStroke(stroke, {
-    size: size,
-    thinning: 0.65,        // High thinning for calligraphy effect (thins on speed)
-    smoothing: 0.85,       // Very smooth curves
-    streamline: 0.65,      // High streamline for fluid motion
-    easing: (t) => Math.sin((t * Math.PI) / 2), // Smooth easing
+    size: size * 1.1,      // Slightly larger base for smoother appearance
+    thinning: 0.55,        // Moderate thinning (less extreme variation = smoother)
+    smoothing: 0.95,       // Maximum smoothing for ultra-fluid curves
+    streamline: 0.85,      // Very high streamline for continuous flow
+    easing: (t) => t * (2 - t), // Smooth ease-out for natural deceleration
     start: {
-      taper: 15,           // Taper at start for pen-like entry
-      easing: (t) => t * t,
+      taper: 25,           // Longer taper for gradual pen entry
+      easing: (t) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
       cap: true,
     },
     end: {
-      taper: 20,           // Taper at end for pen-like exit
-      easing: (t) => t * t,
+      taper: 30,           // Longer taper for gradual pen exit
+      easing: (t) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
       cap: true,
     },
-    simulatePressure: true, // Simulate pressure variation
-    last: true,            // Use last point for better endings
+    simulatePressure: true,
+    last: true,
   });
 
   const len = points.length;
   if (len < 2) return '';
 
-  // Use quadratic Bezier curves for ultra-smooth rendering
+  // Use Catmull-Rom to cubic Bezier conversion for maximum smoothness
   let d = `M ${points[0][0]} ${points[0][1]}`;
 
-  for (let i = 1; i < len - 1; i++) {
-    const curr = points[i];
-    const next = points[i + 1];
-    const xc = (curr[0] + next[0]) / 2;
-    const yc = (curr[1] + next[1]) / 2;
-    d += ` Q ${curr[0]} ${curr[1]}, ${xc} ${yc}`;
-  }
+  // Generate smooth cubic Bezier curves through all points
+  for (let i = 0; i < len - 1; i++) {
+    const p0 = i > 0 ? points[i - 1] : points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = i < len - 2 ? points[i + 2] : points[i + 1];
 
-  // Final point
-  if (len > 1) {
-    const last = points[len - 1];
-    d += ` L ${last[0]} ${last[1]}`;
+    // Catmull-Rom to Bezier control points conversion
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`;
   }
 
   d += ' Z';

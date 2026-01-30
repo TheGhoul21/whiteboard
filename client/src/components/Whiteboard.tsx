@@ -74,20 +74,83 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
      let found = false;
 
+     // Calculate from data objects directly (world coordinates) instead of node.getClientRect()
      selectedIds.forEach(id => {
-        const node = stageRef.current?.findOne('#' + id);
-        if (node) {
+        // Check strokes
+        const stroke = strokes.find(s => s.id === id);
+        if (stroke) {
            found = true;
-           const box = node.getClientRect();
-           minX = Math.min(minX, box.x);
-           minY = Math.min(minY, box.y);
-           maxX = Math.max(maxX, box.x + box.width);
-           maxY = Math.max(maxY, box.y + box.height);
+           for (let i = 0; i < stroke.points.length; i += 2) {
+              minX = Math.min(minX, stroke.points[i] - stroke.size / 2);
+              maxX = Math.max(maxX, stroke.points[i] + stroke.size / 2);
+              minY = Math.min(minY, stroke.points[i + 1] - stroke.size / 2);
+              maxY = Math.max(maxY, stroke.points[i + 1] + stroke.size / 2);
+           }
+        }
+
+        // Check images
+        const image = images.find(img => img.id === id);
+        if (image) {
+           found = true;
+           minX = Math.min(minX, image.x);
+           minY = Math.min(minY, image.y);
+           maxX = Math.max(maxX, image.x + image.width);
+           maxY = Math.max(maxY, image.y + image.height);
+        }
+
+        // Check texts
+        const text = texts.find(t => t.id === id);
+        if (text) {
+           found = true;
+           const w = text.text.length * (text.fontSize * 0.6);
+           const h = text.fontSize * 1.2;
+           minX = Math.min(minX, text.x);
+           minY = Math.min(minY, text.y);
+           maxX = Math.max(maxX, text.x + w);
+           maxY = Math.max(maxY, text.y + h);
+        }
+
+        // Check shapes
+        const shape = shapes.find(s => s.id === id);
+        if (shape) {
+           found = true;
+           minX = Math.min(minX, shape.x);
+           minY = Math.min(minY, shape.y);
+           maxX = Math.max(maxX, shape.x + (shape.width || 50));
+           maxY = Math.max(maxY, shape.y + (shape.height || 50));
+        }
+
+        // Check latex, codes, notes
+        const latexObj = latex.find(l => l.id === id);
+        if (latexObj) {
+           found = true;
+           minX = Math.min(minX, latexObj.x);
+           minY = Math.min(minY, latexObj.y);
+           maxX = Math.max(maxX, latexObj.x + 100);
+           maxY = Math.max(maxY, latexObj.y + 40);
+        }
+
+        const codeObj = codes.find(c => c.id === id);
+        if (codeObj) {
+           found = true;
+           minX = Math.min(minX, codeObj.x);
+           minY = Math.min(minY, codeObj.y);
+           maxX = Math.max(maxX, codeObj.x + codeObj.width);
+           maxY = Math.max(maxY, codeObj.y + codeObj.height);
+        }
+
+        const noteObj = notes.find(n => n.id === id);
+        if (noteObj) {
+           found = true;
+           minX = Math.min(minX, noteObj.x);
+           minY = Math.min(minY, noteObj.y);
+           maxX = Math.max(maxX, noteObj.x + noteObj.width);
+           maxY = Math.max(maxY, noteObj.y + noteObj.height);
         }
      });
 
      if (!found) return null;
-     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+     return { x: minX - 5, y: minY - 5, width: maxX - minX + 10, height: maxY - minY + 10 };
   };
 
   // Update overlay when not dragging
@@ -482,22 +545,75 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
        // Only process box selection if user actually moved (box has size)
        if (selectionBox.width > 3 || selectionBox.height > 3) {
           const box = selectionBox;
-          const stage = stageRef.current;
           const allIds: string[] = [];
-          const overlaps = (nodeBox: {x:number, y:number, width:number, height:number}) => {
+
+          const overlaps = (objBox: {x:number, y:number, width:number, height:number}) => {
              return (
-                box.x < nodeBox.x + nodeBox.width &&
-                box.x + box.width > nodeBox.x &&
-                box.y < nodeBox.y + nodeBox.height &&
-                box.y + box.height > nodeBox.y
+                box.x < objBox.x + objBox.width &&
+                box.x + box.width > objBox.x &&
+                box.y < objBox.y + objBox.height &&
+                box.y + box.height > objBox.y
              );
           };
-          stage.find('.image').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-          stage.find('.stroke').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-          stage.find('.text').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-          stage.find('.shape').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-          stage.find('Group').forEach(node => {
-             if (node.id() && overlaps(node.getClientRect())) allIds.push(node.id());
+
+          // Check strokes using their actual points data (world coordinates)
+          strokes.forEach(stroke => {
+             if (stroke.tool === 'laser') return; // Skip laser
+             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+             for (let i = 0; i < stroke.points.length; i += 2) {
+                minX = Math.min(minX, stroke.points[i]);
+                maxX = Math.max(maxX, stroke.points[i]);
+                minY = Math.min(minY, stroke.points[i + 1]);
+                maxY = Math.max(maxY, stroke.points[i + 1]);
+             }
+             const strokeBox = {
+                x: minX - stroke.size / 2,
+                y: minY - stroke.size / 2,
+                width: maxX - minX + stroke.size,
+                height: maxY - minY + stroke.size
+             };
+             if (overlaps(strokeBox)) allIds.push(stroke.id);
+          });
+
+          // Check images
+          images.forEach(img => {
+             const imgBox = { x: img.x, y: img.y, width: img.width, height: img.height };
+             if (overlaps(imgBox)) allIds.push(img.id);
+          });
+
+          // Check texts
+          texts.forEach(txt => {
+             const w = txt.text.length * (txt.fontSize * 0.6);
+             const h = txt.fontSize * 1.2;
+             const txtBox = { x: txt.x, y: txt.y, width: w, height: h };
+             if (overlaps(txtBox)) allIds.push(txt.id);
+          });
+
+          // Check shapes
+          shapes.forEach(shape => {
+             const shapeBox = {
+                x: shape.x,
+                y: shape.y,
+                width: shape.width || 50,
+                height: shape.height || 50
+             };
+             if (overlaps(shapeBox)) allIds.push(shape.id);
+          });
+
+          // Check latex, codes, notes
+          latex.forEach(l => {
+             const lBox = { x: l.x, y: l.y, width: 100, height: 40 };
+             if (overlaps(lBox)) allIds.push(l.id);
+          });
+
+          codes.forEach(c => {
+             const cBox = { x: c.x, y: c.y, width: c.width, height: c.height };
+             if (overlaps(cBox)) allIds.push(c.id);
+          });
+
+          notes.forEach(n => {
+             const nBox = { x: n.x, y: n.y, width: n.width, height: n.height };
+             if (overlaps(nBox)) allIds.push(n.id);
           });
 
           const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
@@ -514,9 +630,22 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
        setSelectionBox(null);
     }
 
+    // Handle single-point strokes (dots) - when user clicks without moving
+    if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser')) {
+       const lastStroke = strokes[strokes.length - 1];
+       if (lastStroke && lastStroke.points.length === 2) {
+          // Single point - duplicate it slightly to create a visible dot
+          const updatedStroke = {
+             ...lastStroke,
+             points: [lastStroke.points[0], lastStroke.points[1], lastStroke.points[0] + 0.1, lastStroke.points[1] + 0.1]
+          };
+          onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
+       }
+    }
+
     isDrawing.current = false;
     isSelecting.current = false;
-    
+
     if (tool !== 'select' && tool !== 'hand') {
        onUpdate({}, false);
        if (tool === 'text') setTool('select');
@@ -939,10 +1068,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     name="stroke"
                     data={pathData}
                     fill={stroke.color}
-                    draggable={tool === 'select' && !selectedIds.includes(stroke.id)}
+                    draggable={tool === 'select'}
+                    onDragStart={handleDragStart}
+                    onDragMove={handleDragMove}
                     onDragEnd={handleDragEnd}
                     globalCompositeOperation="source-over"
                     hitStrokeWidth={20}
+                    listening={true}
                     shadowColor="rgba(0,0,0,0.15)"
                     shadowBlur={1}
                     shadowOffset={{ x: 0.5, y: 0.5 }}

@@ -1,10 +1,10 @@
 import React from 'react';
 import type { ToolType, BackgroundType, ImageObj } from '../types';
-import { 
-  MousePointer2, Hand, Pen, PenTool, Eraser, Type, 
-  Square, Circle, ArrowRight, Undo2, Redo2, Trash2, 
+import {
+  MousePointer2, Hand, Pen, PenTool, Eraser, Type,
+  Square, Circle, ArrowRight, Undo2, Redo2, Trash2,
   Save, Download, Grid, LayoutTemplate, FileText,
-  Zap
+  Zap, Highlighter, Focus
 } from 'lucide-react';
 import { PDFImporter } from './PDFImporter';
 
@@ -94,8 +94,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button className={btnClass('smooth-pen')} onClick={() => setTool('smooth-pen')} title="Fountain Pen (Calligraphy)">
           <PenTool size={20} />
         </button>
+        <button className={btnClass('highlighter')} onClick={() => setTool('highlighter')} title="Highlighter (Semi-transparent marker)">
+          <Highlighter size={20} />
+        </button>
         <button className={btnClass('laser')} onClick={() => setTool('laser')} title="Laser Pointer (Fades automatically)">
           <Zap size={20} />
+        </button>
+        <button className={btnClass('pointer')} onClick={() => setTool('pointer')} title="Spotlight Pointer (For presentations)">
+          <Focus size={20} />
         </button>
         <button className={btnClass('eraser')} onClick={() => setTool('eraser')} title="Eraser (E)">
           <Eraser size={20} />

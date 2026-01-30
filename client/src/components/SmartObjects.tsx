@@ -9,7 +9,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { LatexObj, CodeObj, NoteObj } from '../types';
 
 // Render Latex
-export const LatexObject = ({ obj, onSelect, isSelected }: { obj: LatexObj, onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void, isSelected?: boolean }) => {
+export const LatexObject = ({ obj, onSelect, isSelected, draggable = true }: { obj: LatexObj, onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void, isSelected?: boolean, draggable?: boolean }) => {
   const divRef = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       try {
@@ -26,13 +26,13 @@ export const LatexObject = ({ obj, onSelect, isSelected }: { obj: LatexObj, onSe
   }, [obj.text]);
 
   return (
-    <Group 
-      id={obj.id} 
-      x={obj.x} 
-      y={obj.y} 
-      onClick={onSelect} 
-      onTap={onSelect} 
-      draggable
+    <Group
+      id={obj.id}
+      x={obj.x}
+      y={obj.y}
+      onClick={onSelect}
+      onTap={onSelect}
+      draggable={draggable}
     >
       <Html divProps={{ style: { pointerEvents: 'none' } }}>
         <div 
@@ -54,18 +54,20 @@ export const LatexObject = ({ obj, onSelect, isSelected }: { obj: LatexObj, onSe
 };
 
 // Render Code
-export const CodeObject = ({ 
-   obj, 
-   onSelect, 
+export const CodeObject = ({
+   obj,
+   onSelect,
    isSelected,
    onChangeLanguage,
-   onChangeText
-}: { 
-   obj: CodeObj, 
-   onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void, 
+   onChangeText,
+   draggable = true
+}: {
+   obj: CodeObj,
+   onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void,
    isSelected?: boolean,
    onChangeLanguage: (lang: string) => void,
-   onChangeText: (text: string) => void
+   onChangeText: (text: string) => void,
+   draggable?: boolean
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,13 +96,13 @@ export const CodeObject = ({
   };
 
   return (
-    <Group 
-      id={obj.id} 
-      x={obj.x} 
-      y={obj.y} 
-      onClick={onSelect} 
-      onTap={onSelect} 
-      draggable={!isEditing} 
+    <Group
+      id={obj.id}
+      x={obj.x}
+      y={obj.y}
+      onClick={onSelect}
+      onTap={onSelect}
+      draggable={!isEditing && draggable}
     >
       <Html divProps={{ style: { pointerEvents: 'none' } }}>
         <div 
@@ -184,19 +186,19 @@ export const CodeObject = ({
 };
 
 // Render Sticky Note
-export const NoteObject = ({ obj, onSelect, isSelected, onChangeText }: { obj: NoteObj, onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void, isSelected?: boolean, onChangeText: (text: string) => void }) => {
+export const NoteObject = ({ obj, onSelect, isSelected, onChangeText, draggable = true }: { obj: NoteObj, onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void, isSelected?: boolean, onChangeText: (text: string) => void, draggable?: boolean }) => {
    const [isEditing, setIsEditing] = useState(false);
    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
    return (
-      <Group 
-        id={obj.id} 
-        x={obj.x} 
-        y={obj.y} 
-        onClick={onSelect} 
-        onTap={onSelect} 
+      <Group
+        id={obj.id}
+        x={obj.x}
+        y={obj.y}
+        onClick={onSelect}
+        onTap={onSelect}
         onDblClick={() => setIsEditing(true)}
-        draggable={!isEditing}
+        draggable={!isEditing && draggable}
       >
          <Rect 
             width={obj.width} 

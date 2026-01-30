@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj } from '../types';
-import { getSvgPathFromStroke, flatToPoints } from '../utils/stroke';
+import { getSvgPathFromStroke, flatToPoints, smoothPoints } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
 
@@ -58,7 +58,43 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const selectionStart = useRef<{x: number, y: number} | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [selectionBox, setSelectionBox] = useState<{x:number, y:number, width:number, height:number} | null>(null);
-  
+  const [pointerPos, setPointerPos] = useState<{x: number, y: number} | null>(null);
+  const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
+
+  const overlayDragStart = useRef<{x: number, y: number} | null>(null);
+
+  const [selectionOverlay, setSelectionOverlay] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+
+  const getSelectionBBox = () => {
+     if (selectedIds.length < 1) return null;
+
+     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+     let found = false;
+
+     selectedIds.forEach(id => {
+        const node = stageRef.current?.findOne('#' + id);
+        if (node) {
+           found = true;
+           const box = node.getClientRect();
+           minX = Math.min(minX, box.x);
+           minY = Math.min(minY, box.y);
+           maxX = Math.max(maxX, box.x + box.width);
+           maxY = Math.max(maxY, box.y + box.height);
+        }
+     });
+
+     if (!found) return null;
+     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  };
+
+  // Update overlay when not dragging
+  useEffect(() => {
+     if (!isDraggingOverlay) {
+        const bbox = getSelectionBBox();
+        setSelectionOverlay(bbox);
+     }
+  }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, isDraggingOverlay]);
+
   useEffect(() => {
      let anim: number;
      const animate = () => {
@@ -97,6 +133,23 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      }
   }, [zoom, viewPos]);
 
+  useEffect(() => {
+     // Reset pointer position when changing tool
+     if (tool !== 'pointer') {
+        setPointerPos(null);
+     }
+  }, [tool]);
+
+  useEffect(() => {
+     // Force recalculation of overlay when selection changes
+     if (selectedIds.length > 0 && stageRef.current) {
+        setTimeout(() => {
+           stageRef.current?.batchDraw();
+        }, 0);
+     }
+  }, [selectedIds]);
+
+  // Paste Handler (Code omitted for brevity, same as before)
   useEffect(() => {
      const handlePaste = (e: ClipboardEvent) => {
         const text = e.clipboardData?.getData('text');
@@ -234,51 +287,52 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
     if (tool === 'select') {
       const target = e.target;
-      
-      // Ignore clicks on Transformer
       if (target.getParent()?.className === 'Transformer') {
          return;
       }
 
-      const targetId = target.id();
-      const parentId = target.getParent()?.id();
+      // Check if we hit the Selection Overlay
+      if (target.name() === 'selection-overlay') {
+         return; 
+      }
+
+      const targetId = target.id() || target.attrs.id;
+      const parentId = target.getParent()?.id() || target.getParent()?.attrs.id;
       const idToSelect = targetId || parentId;
 
-      if (idToSelect && target !== stage && target.getParent()?.name() !== 'background-group') {
-         // Handle Modifier Key for Multi-Select
+      const isBackground = target === stage || target.getParent()?.name() === 'background-group';
+
+      if (idToSelect && !isBackground) {
          const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-         
          if (isModifier) {
             if (selectedIds.includes(idToSelect)) {
-               // Deselect if already selected
                setSelectedIds(selectedIds.filter(id => id !== idToSelect));
             } else {
-               // Add to selection
                setSelectedIds([...selectedIds, idToSelect]);
             }
-         } else {
-            // Replace selection unless clicking on an already selected item (to allow drag)
-            if (!selectedIds.includes(idToSelect)) {
-               setSelectedIds([idToSelect]);
-            }
+            return;
          }
+         if (selectedIds.includes(idToSelect)) {
+            return;
+         }
+         setSelectedIds([idToSelect]);
          return;
       }
 
-      // If clicking empty space:
-      // If modifier is held, KEEP selection and start box select to ADD more? 
-      // Standard behavior: clicking empty space clears selection unless modifier held?
-      // Usually clicking empty space clears selection.
-      // Box selection with Shift usually Adds.
-      
+      // If clicking on background but we have selection, check if overlay exists
+      // Don't clear selection immediately - wait for mouse move to confirm box selection
       const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-      if (!isModifier) {
-         setSelectedIds([]);
+      if (!isModifier && selectedIds.length === 0) {
+         // No selection, start box selection
+         isSelecting.current = true;
+         selectionStart.current = pos;
+         setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+      } else if (!isModifier) {
+         // Has selection - start potential box selection but clear only on move
+         isSelecting.current = true;
+         selectionStart.current = pos;
+         setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       }
-      
-      isSelecting.current = true;
-      selectionStart.current = pos;
-      setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       return;
     }
 
@@ -303,12 +357,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
        return;
     }
 
-    if (tool === 'pen' || tool === 'smooth-pen' || tool === 'eraser' || tool === 'laser') {
+    if (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'laser') {
       const newStroke: Stroke = {
         id: Date.now().toString(),
         tool: tool,
         color: tool === 'laser' ? 'red' : color,
         size: size,
+        opacity: tool === 'highlighter' ? 0.3 : 1,
         points: [pos.x, pos.y],
         createdAt: tool === 'laser' ? Date.now() : undefined
       };
@@ -334,43 +389,67 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage();
     if (!stage) return;
-    
+
     if (isPanning.current && lastPointerPos.current) {
        const pointerPos = stage.getPointerPosition();
        if (!pointerPos) return;
        const dx = pointerPos.x - lastPointerPos.current.x;
        const dy = pointerPos.y - lastPointerPos.current.y;
        const newPos = { x: stage.x() + dx, y: stage.y() + dy };
-       
        setViewPos(newPos);
-       
        lastPointerPos.current = pointerPos;
+       return;
+    }
+
+    const pos = stage.getRelativePointerPosition();
+    if (!pos) return;
+
+    // Update pointer position for spotlight effect
+    if (tool === 'pointer') {
+       setPointerPos(pos);
        return;
     }
 
     if (tool === 'hand') return;
 
-    const pos = stage.getRelativePointerPosition();
-    if (!pos) return;
-
     if (tool === 'select' && isSelecting.current && selectionStart.current) {
        const sx = selectionStart.current.x;
        const sy = selectionStart.current.y;
-       setSelectionBox({
-          x: Math.min(sx, pos.x),
-          y: Math.min(sy, pos.y),
-          width: Math.abs(pos.x - sx),
-          height: Math.abs(pos.y - sy)
-       });
+       const moved = Math.abs(pos.x - sx) > 3 || Math.abs(pos.y - sy) > 3;
+
+       if (moved) {
+          // User is actually dragging - clear selection and start box
+          if (selectedIds.length > 0) {
+             setSelectedIds([]);
+          }
+          setSelectionBox({
+             x: Math.min(sx, pos.x),
+             y: Math.min(sy, pos.y),
+             width: Math.abs(pos.x - sx),
+             height: Math.abs(pos.y - sy)
+          });
+       }
        return;
     }
 
     if (!isDrawing.current) return;
 
-    if (tool === 'pen' || tool === 'smooth-pen' || tool === 'eraser' || tool === 'laser') {
+    if (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'laser') {
       const lastStroke = strokes[strokes.length - 1];
       if (!lastStroke) return;
+
+      // For small writing, we need MORE points, not fewer - only skip extremely close duplicates
+      const minDistance = 0.5;
+      const points = lastStroke.points;
+      if (points.length >= 2) {
+        const lastX = points[points.length - 2];
+        const lastY = points[points.length - 1];
+        const dist = Math.sqrt((pos.x - lastX) ** 2 + (pos.y - lastY) ** 2);
+        if (dist < minDistance) return;
+      }
+
       const newPoints = lastStroke.points.concat([pos.x, pos.y]);
+
       const newStrokes = [...strokes];
       newStrokes[newStrokes.length - 1] = { ...lastStroke, points: newPoints };
       onUpdate({ strokes: newStrokes }, true);
@@ -401,35 +480,37 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     lastPointerPos.current = null;
 
     if (isSelecting.current && selectionBox && stageRef.current) {
-       const box = selectionBox;
-       const stage = stageRef.current;
-       const allIds: string[] = [];
-       const overlaps = (nodeBox: {x:number, y:number, width:number, height:number}) => {
-          return (
-             box.x < nodeBox.x + nodeBox.width &&
-             box.x + box.width > nodeBox.x &&
-             box.y < nodeBox.y + nodeBox.height &&
-             box.y + box.height > nodeBox.y
-          );
-       };
-       stage.find('.image').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-       stage.find('.stroke').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-       stage.find('.text').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-       stage.find('.shape').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
-       stage.find('Group').forEach(node => {
-          if (node.id() && overlaps(node.getClientRect())) allIds.push(node.id());
-       });
+       // Only process box selection if user actually moved (box has size)
+       if (selectionBox.width > 3 || selectionBox.height > 3) {
+          const box = selectionBox;
+          const stage = stageRef.current;
+          const allIds: string[] = [];
+          const overlaps = (nodeBox: {x:number, y:number, width:number, height:number}) => {
+             return (
+                box.x < nodeBox.x + nodeBox.width &&
+                box.x + box.width > nodeBox.x &&
+                box.y < nodeBox.y + nodeBox.height &&
+                box.y + box.height > nodeBox.y
+             );
+          };
+          stage.find('.image').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
+          stage.find('.stroke').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
+          stage.find('.text').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
+          stage.find('.shape').forEach(node => { if (overlaps(node.getClientRect())) allIds.push(node.id()); });
+          stage.find('Group').forEach(node => {
+             if (node.id() && overlaps(node.getClientRect())) allIds.push(node.id());
+          });
 
-       // If modifier key held, ADD to selection
-       const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-       
-       if (isModifier) {
-          // Add unique new IDs
-          const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
-          setSelectedIds(uniqueIds);
-       } else {
-          setSelectedIds(allIds);
+          const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+
+          if (isModifier) {
+             const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
+             setSelectedIds(uniqueIds);
+          } else {
+             setSelectedIds(allIds);
+          }
        }
+       // else: just a click, keep existing selection
 
        setSelectionBox(null);
     }
@@ -443,6 +524,44 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     }
   };
 
+  const handleDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
+     if(tool === 'hand') return;
+
+     if (e.target.name() === 'selection-overlay') {
+        setIsDraggingOverlay(true);
+        overlayDragStart.current = e.target.getPosition();
+     }
+  };
+
+  const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+     if (tool === 'hand') return;
+
+     if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
+        const currentPos = e.target.getPosition();
+        const dx = currentPos.x - overlayDragStart.current.x;
+        const dy = currentPos.y - overlayDragStart.current.y;
+
+        // Move all selected nodes visually
+        selectedIds.forEach(selId => {
+           const node = stageRef.current?.findOne('#' + selId);
+
+           // Check in all types including strokes
+           const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes].find(o => o.id === selId);
+           const strokeOriginal = strokes.find(s => s.id === selId);
+
+           if (node && original) {
+              // Regular objects with x/y
+              node.setPosition({ x: original.x + dx, y: original.y + dy });
+           } else if (node && strokeOriginal) {
+              // Strokes use position offset (points are relative to 0,0)
+              node.setPosition({ x: dx, y: dy });
+           }
+        });
+
+        stageRef.current?.batchDraw();
+     }
+  };
+
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
      if(tool === 'hand') {
         if(e.target === e.target.getStage()) {
@@ -451,42 +570,107 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         return;
      }
 
-     const id = e.target.id();
-     if (!id) return;
+     // Handle overlay drag
+     if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
+        const currentPos = e.target.getPosition();
+        const dx = currentPos.x - overlayDragStart.current.x;
+        const dy = currentPos.y - overlayDragStart.current.y;
 
-     const x = e.target.x();
-     const y = e.target.y();
-     
-     const newImages = images.map(img => img.id === id ? { ...img, x, y } : img);
-     const newTexts = texts.map(txt => txt.id === id ? { ...txt, x, y } : txt);
-     const newShapes = shapes.map(shp => shp.id === id ? { ...shp, x, y } : shp);
-     const newLatex = latex.map(l => l.id === id ? { ...l, x, y } : l);
-     const newCodes = codes.map(c => c.id === id ? { ...c, x, y } : c);
-     const newNotes = notes.map(n => n.id === id ? { ...n, x, y } : n);
-     
-     let newStrokes = strokes;
-     if (e.target.name() === 'stroke') {
-        const dx = x; 
-        const dy = y;
-        newStrokes = strokes.map(s => {
-           if (s.id === id) {
+        overlayDragStart.current = null;
+
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+           setIsDraggingOverlay(false);
+           return;
+        }
+
+        // Apply delta to ALL selected items
+        const newImages = images.map(img => selectedIds.includes(img.id) ? { ...img, x: img.x + dx, y: img.y + dy } : img);
+        const newTexts = texts.map(txt => selectedIds.includes(txt.id) ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
+        const newShapes = shapes.map(shp => selectedIds.includes(shp.id) ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
+        const newLatex = latex.map(l => selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l);
+        const newCodes = codes.map(c => selectedIds.includes(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c);
+        const newNotes = notes.map(n => selectedIds.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+        const newStrokes = strokes.map(s => {
+           if (selectedIds.includes(s.id)) {
               const newPoints = [];
               for(let i=0; i<s.points.length; i+=2) {
                  newPoints.push(s.points[i] + dx);
                  newPoints.push(s.points[i+1] + dy);
               }
-              e.target.position({x:0, y:0});
               return { ...s, points: newPoints };
            }
            return s;
         });
+
+        onUpdate({
+           strokes: newStrokes,
+           images: newImages,
+           texts: newTexts,
+           shapes: newShapes,
+           latex: newLatex,
+           codes: newCodes,
+           notes: newNotes
+        });
+
+        // Reset manual positions after state update
+        setTimeout(() => {
+           selectedIds.forEach(selId => {
+              const node = stageRef.current?.findOne('#' + selId);
+              if (node && node.name() === 'stroke') {
+                 node.setPosition({ x: 0, y: 0 });
+              }
+           });
+           setIsDraggingOverlay(false);
+           stageRef.current?.batchDraw();
+        }, 0);
+
+        return;
      }
 
+     // Handle single object drag
+     const id = e.target.id();
+     if (!id) return;
+
+     const isStroke = e.target.name() === 'stroke';
+     let dx = 0, dy = 0;
+
+     if (isStroke) {
+        dx = e.target.x();
+        dy = e.target.y();
+        e.target.position({ x: 0, y: 0 });
+     } else {
+        const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes].find(o => o.id === id);
+        if (original) {
+           dx = e.target.x() - original.x;
+           dy = e.target.y() - original.y;
+        }
+     }
+
+     if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+
+     const newImages = images.map(img => img.id === id ? { ...img, x: img.x + dx, y: img.y + dy } : img);
+     const newTexts = texts.map(txt => txt.id === id ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
+     const newShapes = shapes.map(shp => shp.id === id ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
+     const newLatex = latex.map(l => l.id === id ? { ...l, x: l.x + dx, y: l.y + dy } : l);
+     const newCodes = codes.map(c => c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c);
+     const newNotes = notes.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+     const newStrokes = strokes.map(s => {
+        if (s.id === id) {
+           const newPoints = [];
+           for(let i=0; i<s.points.length; i+=2) {
+              newPoints.push(s.points[i] + dx);
+              newPoints.push(s.points[i+1] + dy);
+           }
+           return { ...s, points: newPoints };
+        }
+        return s;
+     });
+
      onUpdate({
-        strokes: newStrokes, 
-        images: newImages, 
-        texts: newTexts, 
-        shapes: newShapes, 
+        strokes: newStrokes,
+        images: newImages,
+        texts: newTexts,
+        shapes: newShapes,
         latex: newLatex,
         codes: newCodes,
         notes: newNotes
@@ -590,9 +774,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      });
   };
 
-  // Helper to trigger select logic from SmartObjects
   const handleSmartObjectSelect = (e: Konva.KonvaEventObject<MouseEvent>, id: string) => {
-     if (tool !== 'select') return; 
+     if (tool !== 'select') return;
+     e.cancelBubble = true; 
      
      const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
      if (isModifier) {
@@ -621,6 +805,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       onTouchEnd={handleMouseUp}
       onContextMenu={(e) => e.evt.preventDefault()}
       draggable={tool === 'hand'}
+      onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
       ref={stageRef as any}
       onWheel={(e) => {
@@ -722,7 +908,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             width={img.width}
             height={img.height}
             rotation={img.rotation}
-            draggable={tool === 'select'}
+            draggable={tool === 'select' && !selectedIds.includes(img.id)}
             onDragEnd={handleDragEnd}
             onTransformEnd={handleTransformEnd}
           />
@@ -731,7 +917,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         {strokes.map((stroke) => {
            if (stroke.tool === 'laser') {
               const age = Date.now() - (stroke.createdAt || 0);
-              const opacity = Math.max(0, 1 - age / 1000); 
+              const opacity = Math.max(0, 1 - age / 1000);
               if (opacity <= 0) return null;
               const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size * 2, 0.1);
               return (
@@ -746,7 +932,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               );
            }
            if (stroke.tool === 'smooth-pen') {
-              const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size, 0.5);
+              const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size, 0.25);
               return (
                  <Path
                     key={stroke.id}
@@ -754,10 +940,33 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     name="stroke"
                     data={pathData}
                     fill={stroke.color}
-                    draggable={tool === 'select'}
+                    draggable={tool === 'select' && !selectedIds.includes(stroke.id)}
                     onDragEnd={handleDragEnd}
                     globalCompositeOperation="source-over"
+                    hitStrokeWidth={20}
                  />
+              );
+           }
+           if (stroke.tool === 'highlighter') {
+              return (
+                <Line
+                  key={stroke.id}
+                  id={stroke.id}
+                  name="stroke"
+                  points={stroke.points}
+                  stroke={stroke.color}
+                  strokeWidth={stroke.size}
+                  opacity={stroke.opacity || 0.3}
+                  tension={0.5}
+                  lineCap="round"
+                  lineJoin="round"
+                  draggable={tool === 'select'}
+                  onDragStart={handleDragStart}
+                  onDragMove={handleDragMove}
+                  onDragEnd={handleDragEnd}
+                  globalCompositeOperation="source-over"
+                  hitStrokeWidth={20}
+                />
               );
            }
            return (
@@ -768,20 +977,23 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                points={stroke.points}
                stroke={stroke.color}
                strokeWidth={stroke.size}
-               tension={0} 
+               tension={0.5}
                lineCap="round"
                lineJoin="round"
                draggable={tool === 'select'}
+               onDragStart={handleDragStart}
+               onDragMove={handleDragMove}
                onDragEnd={handleDragEnd}
                globalCompositeOperation={
                  stroke.tool === 'eraser' ? 'destination-out' : 'source-over'
                }
+               hitStrokeWidth={20}
              />
            );
         })}
         
         {texts.map((txt) => (
-           <Text 
+           <Text
               key={txt.id}
               id={txt.id}
               name="text"
@@ -790,7 +1002,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               text={txt.text}
               fontSize={txt.fontSize}
               fill={txt.color}
-              draggable={tool === 'select'}
+              draggable={tool === 'select' && !selectedIds.includes(txt.id)}
               onDragEnd={handleDragEnd}
               onTransformEnd={handleTransformEnd}
            />
@@ -798,7 +1010,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         
         {shapes.map((shp) => {
            if (shp.type === 'rect') {
-              return <Rect 
+              return <Rect
                  key={shp.id}
                  id={shp.id}
                  name="shape"
@@ -808,21 +1020,21 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                  height={shp.height}
                  stroke={shp.color}
                  strokeWidth={shp.strokeWidth}
-                 draggable={tool === 'select'}
+                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
                  onDragEnd={handleDragEnd}
                  onTransformEnd={handleTransformEnd}
               />;
            } else if (shp.type === 'circle') {
-              return <Circle 
+              return <Circle
                  key={shp.id}
                  id={shp.id}
                  name="shape"
                  x={shp.x}
                  y={shp.y}
-                 radius={Math.abs((shp.width || 10) / 2)} 
+                 radius={Math.abs((shp.width || 10) / 2)}
                  stroke={shp.color}
                  strokeWidth={shp.strokeWidth}
-                 draggable={tool === 'select'}
+                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
                  onDragEnd={handleDragEnd}
                  onTransformEnd={handleTransformEnd}
               />;
@@ -837,7 +1049,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                  stroke={shp.color}
                  strokeWidth={shp.strokeWidth}
                  fill={shp.color}
-                 draggable={tool === 'select'}
+                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
                  onDragEnd={handleDragEnd}
                  onTransformEnd={handleTransformEnd}
               />;
@@ -845,8 +1057,28 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            return null;
         })}
 
+
+        {/* Overlay per drag multi-selezione - segue il mouse */}
+        {selectedIds.length > 0 && selectionOverlay && (
+           <Rect
+              name="selection-overlay"
+              x={selectionOverlay.x}
+              y={selectionOverlay.y}
+              width={selectionOverlay.width}
+              height={selectionOverlay.height}
+              fill="rgba(0, 123, 255, 0.05)"
+              stroke="rgba(0, 123, 255, 0.4)"
+              strokeWidth={1}
+              dash={[4, 4]}
+              draggable={tool === 'select'}
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragEnd={handleDragEnd}
+           />
+        )}
+
         {selectionBox && (
-           <Rect 
+           <Rect
               x={selectionBox.x}
               y={selectionBox.y}
               width={selectionBox.width}
@@ -856,15 +1088,53 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               strokeWidth={1}
            />
         )}
-        
-        <Transformer 
-           ref={transformerRef} 
+
+        <Transformer
+           ref={transformerRef}
            boundBoxFunc={(oldBox, newBox) => {
              if (newBox.width < 5 || newBox.height < 5) return oldBox;
              return newBox;
            }}
         />
       </Layer>
+
+      {/* Pointer/Spotlight Layer */}
+      {tool === 'pointer' && pointerPos && (
+        <Layer>
+          <Rect
+            x={-viewPos.x / zoom}
+            y={-viewPos.y / zoom}
+            width={window.innerWidth / zoom}
+            height={window.innerHeight / zoom}
+            fill="rgba(0, 0, 0, 0.7)"
+            listening={false}
+          />
+          <Circle
+            x={pointerPos.x}
+            y={pointerPos.y}
+            radius={size}
+            fill="rgba(255, 255, 255, 0.1)"
+            stroke="#FFD700"
+            strokeWidth={3}
+            shadowColor="rgba(255, 215, 0, 0.8)"
+            shadowBlur={20}
+            shadowOpacity={1}
+            globalCompositeOperation="destination-out"
+            listening={false}
+          />
+          <Circle
+            x={pointerPos.x}
+            y={pointerPos.y}
+            radius={size}
+            stroke="#FFD700"
+            strokeWidth={3}
+            shadowColor="rgba(255, 215, 0, 0.8)"
+            shadowBlur={20}
+            shadowOpacity={1}
+            listening={false}
+          />
+        </Layer>
+      )}
     </Stage>
   );
 };

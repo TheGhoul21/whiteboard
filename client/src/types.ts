@@ -3,7 +3,7 @@ export interface Point {
   y: number;
 }
 
-export type ToolType = 'select' | 'hand' | 'pen' | 'smooth-pen' | 'eraser' | 'laser' | 'text' | 'rect' | 'circle' | 'arrow';
+export type ToolType = 'select' | 'hand' | 'pen' | 'smooth-pen' | 'highlighter' | 'eraser' | 'laser' | 'pointer' | 'text' | 'rect' | 'circle' | 'arrow';
 
 export type BackgroundType = 'white' | 'black' | 'grid' | 'lines' | 'dots';
 
@@ -11,9 +11,10 @@ export interface Stroke {
   id: string;
   points: number[];
   color: string;
-  tool: 'pen' | 'smooth-pen' | 'eraser' | 'laser';
+  tool: 'pen' | 'smooth-pen' | 'highlighter' | 'eraser' | 'laser';
   size: number;
-  createdAt?: number; 
+  opacity?: number;
+  createdAt?: number;
 }
 
 export interface ImageObj {

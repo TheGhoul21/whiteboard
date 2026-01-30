@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
-import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj } from '../types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj } from '../types';
 import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
+import { CodeBlockObject } from './CodeBlockObject';
+import { D3VisualizationObject } from './D3VisualizationObject';
 import { A4Grid } from './A4Grid';
 
 interface WhiteboardProps {
@@ -19,8 +21,10 @@ interface WhiteboardProps {
   latex: LatexObj[];
   codes: CodeObj[];
   notes: NoteObj[];
+  codeblocks: CodeBlockObj[];
+  d3visualizations: D3VisualizationObj[];
   background: BackgroundType;
-  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[] }> , overwrite?: boolean) => void;
+  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[] }> , overwrite?: boolean) => void;
   stageRef: React.RefObject<Konva.Stage | null>;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
@@ -43,6 +47,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   latex = [],
   codes = [],
   notes = [],
+  codeblocks = [],
+  d3visualizations = [],
   background,
   onUpdate,
   stageRef,
@@ -54,6 +60,37 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   setViewPos,
   a4GridVisible = false
 }) => {
+  console.log('[Whiteboard] Render with:', {
+    codeblocks: codeblocks.length,
+    d3visualizations: d3visualizations.length,
+    strokes: strokes.length,
+    images: images.length
+  });
+
+  // Prevent browser back/forward navigation gestures
+  useEffect(() => {
+    const preventNavigation = (e: WheelEvent) => {
+      // Prevent horizontal scroll that triggers navigation
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+      }
+    };
+
+    const preventTouchNav = (e: TouchEvent) => {
+      // Prevent swipe navigation when panning
+      if (isPanning.current || tool === 'hand') {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('wheel', preventNavigation, { passive: false });
+    window.addEventListener('touchmove', preventTouchNav, { passive: false });
+
+    return () => {
+      window.removeEventListener('wheel', preventNavigation);
+      window.removeEventListener('touchmove', preventTouchNav);
+    };
+  }, [tool]);
   const isDrawing = useRef(false);
   const isSelecting = useRef(false);
   const isPanning = useRef(false);
@@ -147,6 +184,26 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            maxX = Math.max(maxX, noteObj.x + noteObj.width);
            maxY = Math.max(maxY, noteObj.y + noteObj.height);
         }
+
+        // Check codeblocks
+        const codeBlock = codeblocks.find(cb => cb.id === id);
+        if (codeBlock) {
+           found = true;
+           minX = Math.min(minX, codeBlock.x);
+           minY = Math.min(minY, codeBlock.y);
+           maxX = Math.max(maxX, codeBlock.x + codeBlock.width);
+           maxY = Math.max(maxY, codeBlock.y + codeBlock.height);
+        }
+
+        // Check d3visualizations
+        const viz = d3visualizations.find(v => v.id === id);
+        if (viz) {
+           found = true;
+           minX = Math.min(minX, viz.x);
+           minY = Math.min(minY, viz.y);
+           maxX = Math.max(maxX, viz.x + viz.width);
+           maxY = Math.max(maxY, viz.y + viz.height);
+        }
      });
 
      if (!found) return null;
@@ -159,7 +216,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         const bbox = getSelectionBBox();
         setSelectionOverlay(bbox);
      }
-  }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, isDraggingOverlay]);
+  }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations, isDraggingOverlay]);
 
   useEffect(() => {
      let anim: number;
@@ -184,7 +241,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     const nodes = selectedIds.map(id => stageRef.current?.findOne('#' + id)).filter(Boolean) as Konva.Node[];
     transformerRef.current.nodes(nodes);
     layer?.batchDraw();
-  }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes]);
+  }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations]);
 
   useEffect(() => {
      if (stageRef.current) {
@@ -616,6 +673,18 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
              if (overlaps(nBox)) allIds.push(n.id);
           });
 
+          // Check codeblocks
+          codeblocks.forEach(cb => {
+             const cbBox = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+             if (overlaps(cbBox)) allIds.push(cb.id);
+          });
+
+          // Check d3visualizations
+          d3visualizations.forEach(v => {
+             const vBox = { x: v.x, y: v.y, width: v.width, height: v.height };
+             if (overlaps(vBox)) allIds.push(v.id);
+          });
+
           const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
 
           if (isModifier) {
@@ -674,7 +743,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            const node = stageRef.current?.findOne('#' + selId);
 
            // Check in all types including strokes
-           const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes].find(o => o.id === selId);
+           const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === selId);
            const strokeOriginal = strokes.find(s => s.id === selId);
 
            if (node && original) {
@@ -718,6 +787,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         const newLatex = latex.map(l => selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l);
         const newCodes = codes.map(c => selectedIds.includes(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c);
         const newNotes = notes.map(n => selectedIds.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+        const newCodeBlocks = codeblocks.map(cb => selectedIds.includes(cb.id) ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
+        const newD3Visualizations = d3visualizations.map(v => selectedIds.includes(v.id) ? { ...v, x: v.x + dx, y: v.y + dy } : v);
         const newStrokes = strokes.map(s => {
            if (selectedIds.includes(s.id)) {
               const newPoints = [];
@@ -737,7 +808,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            shapes: newShapes,
            latex: newLatex,
            codes: newCodes,
-           notes: newNotes
+           notes: newNotes,
+           codeblocks: newCodeBlocks,
+           d3visualizations: newD3Visualizations
         });
 
         // Reset manual positions after state update
@@ -767,7 +840,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         dy = e.target.y();
         e.target.position({ x: 0, y: 0 });
      } else {
-        const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes].find(o => o.id === id);
+        const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === id);
         if (original) {
            dx = e.target.x() - original.x;
            dy = e.target.y() - original.y;
@@ -782,6 +855,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      const newLatex = latex.map(l => l.id === id ? { ...l, x: l.x + dx, y: l.y + dy } : l);
      const newCodes = codes.map(c => c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c);
      const newNotes = notes.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+     const newCodeBlocks = codeblocks.map(cb => cb.id === id ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
+     const newD3Visualizations = d3visualizations.map(v => v.id === id ? { ...v, x: v.x + dx, y: v.y + dy } : v);
      const newStrokes = strokes.map(s => {
         if (s.id === id) {
            const newPoints = [];
@@ -801,7 +876,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         shapes: newShapes,
         latex: newLatex,
         codes: newCodes,
-        notes: newNotes
+        notes: newNotes,
+        codeblocks: newCodeBlocks,
+        d3visualizations: newD3Visualizations
      });
   };
   
@@ -932,6 +1009,18 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       onTouchMove={handleMouseMove}
       onTouchEnd={handleMouseUp}
       onContextMenu={(e) => e.evt.preventDefault()}
+      onWheel={(e) => {
+        // Prevent browser back/forward navigation on Mac
+        if (e.evt.ctrlKey || Math.abs(e.evt.deltaX) > Math.abs(e.evt.deltaY)) {
+          e.evt.preventDefault();
+        }
+      }}
+      onTouchMove={(e) => {
+        // Prevent browser navigation on touch devices
+        if (tool === 'hand' || isPanning.current) {
+          e.evt.preventDefault();
+        }
+      }}
       draggable={tool === 'hand'}
       onDragStart={handleDragStart}
       onDragMove={handleDragMove}
@@ -1009,17 +1098,70 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            />
         ))}
         {notes.map(n => (
-           <NoteObject 
-              key={n.id} 
-              obj={n} 
+           <NoteObject
+              key={n.id}
+              obj={n}
               isSelected={selectedIds.includes(n.id)}
-              onSelect={(e) => handleSmartObjectSelect(e, n.id)} 
+              onSelect={(e) => handleSmartObjectSelect(e, n.id)}
               onChangeText={(text) => {
                  const newNotes = notes.map(note => note.id === n.id ? { ...note, text } : note);
                  onUpdate({ notes: newNotes });
               }}
            />
         ))}
+
+         {codeblocks.map(cb => (
+            <CodeBlockObject
+               key={cb.id}
+               obj={cb}
+               isSelected={selectedIds.includes(cb.id)}
+               onSelect={(e) => handleSmartObjectSelect(e, cb.id)}
+               draggable={tool === 'select' && !isPanning.current}
+               tool={tool}
+               onUpdate={(updates) => {
+                  console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
+                  // Use functional form to avoid stale closure issues
+                  // Only update the specific codeblock, don't touch other arrays
+                  const newCodeBlocks = codeblocks.map(block =>
+                    block.id === cb.id ? { ...block, ...updates } : block
+                  );
+                  console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
+                  onUpdate({
+                    codeblocks: newCodeBlocks
+                  });
+               }}
+               onCreateVisualization={(viz, codeBlockUpdates) => {
+                  console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
+                  // Single atomic update: new viz + updated codeblock
+                  const newCodeBlocks = codeblocks.map(block =>
+                    block.id === cb.id
+                      ? { ...block, outputId: viz.id, ...codeBlockUpdates }
+                      : block
+                  );
+                  onUpdate({
+                    codeblocks: newCodeBlocks,
+                    d3visualizations: [...d3visualizations, viz]
+                  });
+               }}
+               onUpdateVisualization={(updates) => {
+                  console.log('[Whiteboard] onUpdateVisualization called for:', updates.id);
+                  const newVizs = d3visualizations.map(v => v.id === updates.id ? { ...v, ...updates } : v);
+                  console.log('[Whiteboard] Updating with d3visualizations count:', newVizs.length);
+                  onUpdate({ d3visualizations: newVizs });
+               }}
+            />
+         ))}
+
+         {d3visualizations.map(viz => (
+            <D3VisualizationObject
+               key={viz.id}
+               obj={viz}
+               isSelected={selectedIds.includes(viz.id)}
+               onSelect={(e) => handleSmartObjectSelect(e, viz.id)}
+               draggable={tool === 'select' && !isPanning.current}
+               tool={tool}
+            />
+         ))}
 
         {images.map((img) => (
           <KonvaImage

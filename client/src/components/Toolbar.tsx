@@ -4,7 +4,7 @@ import {
   MousePointer2, Hand, Pen, PenTool, Eraser, Type,
   Square, Circle, ArrowRight, Undo2, Redo2, Trash2,
   Save, Download, Grid, LayoutTemplate, FileText,
-  Zap, Highlighter, Focus
+  Zap, Highlighter, Focus, Code
 } from 'lucide-react';
 import { PDFImporter } from './PDFImporter';
 
@@ -27,6 +27,7 @@ interface ToolbarProps {
   onSave: () => void;
   onExport: () => void;
   onImportImages: (images: ImageObj[]) => void;
+  onCreateCodeBlock?: () => void;
 }
 
 // Soft, muted palettes for relaxed teaching (inspired by Nord/Gruvbox)
@@ -70,7 +71,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClear,
   onSave,
   onExport,
-  onImportImages
+  onImportImages,
+  onCreateCodeBlock
 }) => {
   const btnClass = (t: ToolType) => 
     `p-2 rounded transition-colors ${tool === t ? 'bg-blue-100 text-blue-600 shadow-inner' : 'hover:bg-gray-100 text-gray-700'}`;
@@ -139,6 +141,19 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <ArrowRight size={20} />
         </button>
       </div>
+
+      {/* CodeBlock */}
+      {onCreateCodeBlock && (
+        <div className="flex gap-1 border-r pr-3 border-gray-300">
+          <button
+            onClick={onCreateCodeBlock}
+            className="p-2 hover:bg-gray-100 rounded text-gray-700"
+            title="Create CodeBlock (JavaScript + D3.js)"
+          >
+            <Code size={20} />
+          </button>
+        </div>
+      )}
 
       {/* Styles */}
       <div className="flex items-center gap-2 border-r pr-3 border-gray-300">

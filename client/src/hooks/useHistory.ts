@@ -7,27 +7,28 @@ export default function useHistory<T>(initialState: T) {
   const state = history[step];
 
   const setState = useCallback((newState: T | ((prev: T) => T), overwrite = false) => {
-    setHistory(prev => {
-      const current = prev[step];
-      const nextValue = typeof newState === 'function' ? (newState as Function)(current) : newState;
+    // Use functional updates to avoid stale closure issues with 'step'
+    setStep(currentStep => {
+      setHistory(prevHistory => {
+        const current = prevHistory[currentStep];
+        const nextValue = typeof newState === 'function' ? (newState as Function)(current) : newState;
+        
+        if (overwrite) {
+          // Replace current step
+          const newHistory = [...prevHistory];
+          newHistory[currentStep] = nextValue;
+          return newHistory;
+        } else {
+          // Add new step, truncate future if any
+          const newHistory = prevHistory.slice(0, currentStep + 1);
+          newHistory.push(nextValue);
+          return newHistory;
+        }
+      });
       
-      if (overwrite) {
-        // Replace current step
-        const newHistory = [...prev];
-        newHistory[step] = nextValue;
-        return newHistory;
-      } else {
-        // Add new step, truncate future if any
-        const newHistory = prev.slice(0, step + 1);
-        newHistory.push(nextValue);
-        return newHistory;
-      }
+      return overwrite ? currentStep : currentStep + 1;
     });
-    
-    if (!overwrite) {
-      setStep(prev => prev + 1);
-    }
-  }, [step]);
+  }, []); // No dependencies needed - uses functional updates
 
   const undo = useCallback(() => {
     setStep(prev => Math.max(0, prev - 1));

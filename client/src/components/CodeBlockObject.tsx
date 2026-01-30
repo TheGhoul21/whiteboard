@@ -1,0 +1,489 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Group, Rect } from 'react-konva';
+import { Html } from 'react-konva-utils';
+import Konva from 'konva';
+import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType } from '../types';
+import { ControlWidget } from './ControlWidget';
+import * as d3 from 'd3';
+import { EditorView, keymap } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { javascript } from '@codemirror/lang-javascript';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { basicSetup } from 'codemirror';
+
+interface CodeBlockObjectProps {
+  obj: CodeBlockObj;
+  onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  isSelected?: boolean;
+  draggable?: boolean;
+  onUpdate: (updates: Partial<CodeBlockObj>) => void;
+  onCreateVisualization: (viz: D3VisualizationObj, codeBlockUpdates: Partial<CodeBlockObj>) => void;
+  onUpdateVisualization: (updates: { id: string; content: string }) => void;
+  tool?: ToolType;
+}
+
+export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
+  obj,
+  onSelect,
+  isSelected = false,
+  draggable = true,
+  onUpdate,
+  onCreateVisualization,
+  onUpdateVisualization,
+  tool = 'select'
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const isSelectMode = tool === 'select';
+  const isDrawingMode = ['pen', 'smooth-pen', 'highlighter', 'eraser', 'laser', 'rect', 'circle', 'arrow', 'text'].includes(tool);
+  const editorViewRef = useRef<EditorView | null>(null);
+
+  // Initialize CodeMirror editor
+  useEffect(() => {
+    if (isEditing && editorRef.current && !editorViewRef.current) {
+      const state = EditorState.create({
+        doc: obj.code,
+        extensions: [
+          basicSetup,
+          javascript(),
+          oneDark,
+          keymap.of([
+            {
+              key: 'Mod-Enter',
+              run: () => {
+                executeCode();
+                return true;
+              }
+            },
+            {
+              key: 'Escape',
+              run: () => {
+                handleBlur();
+                return true;
+              }
+            }
+          ]),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const newCode = update.state.doc.toString();
+              onUpdate({ code: newCode });
+            }
+          })
+        ]
+      });
+
+      const view = new EditorView({
+        state,
+        parent: editorRef.current
+      });
+
+      editorViewRef.current = view;
+
+      // Focus the editor
+      view.focus();
+    }
+
+    // Cleanup
+    return () => {
+      if (editorViewRef.current && !isEditing) {
+        editorViewRef.current.destroy();
+        editorViewRef.current = null;
+      }
+    };
+  }, [isEditing]);
+
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    if (editorViewRef.current) {
+      editorViewRef.current.destroy();
+      editorViewRef.current = null;
+    }
+  };
+
+  const executeCode = () => {
+    console.log('[CodeBlock] Starting execution...', obj.id);
+    setIsExecuting(true);
+
+    // Use setTimeout to avoid blocking and ensure state updates properly
+    setTimeout(() => {
+      try {
+        // 1. Create output container
+        const outputDiv = document.createElement('div');
+        outputDiv.id = 'output';
+
+        // 2. Setup sandbox with control values
+        const controlValues = new Map(
+          obj.controls?.map(c => [c.label, c.value]) || []
+        );
+
+        const controls: CodeBlockControl[] = [];
+
+        const sandbox = {
+          output: outputDiv,
+          d3: d3,
+
+          slider: (label: string, min: number, max: number, initial: number, step = 1) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'slider',
+              label,
+              value,
+              min,
+              max,
+              step
+            });
+            return value;
+          },
+
+          input: (label: string, initial: string) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'text',
+              label,
+              value
+            });
+            return value;
+          },
+
+          checkbox: (label: string, initial: boolean) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'checkbox',
+              label,
+              value
+            });
+            return value;
+          },
+
+          log: (msg: any) => console.log('[CodeBlock]', msg)
+        };
+
+        // 3. Execute user code
+        console.log('[CodeBlock] Executing user code...');
+        const userFunction = new Function(
+          'output', 'd3', 'slider', 'input', 'checkbox', 'log',
+          obj.code
+        );
+
+        userFunction(
+          sandbox.output,
+          sandbox.d3,
+          sandbox.slider,
+          sandbox.input,
+          sandbox.checkbox,
+          sandbox.log
+        );
+
+        // 4. Extract output content
+        const outputContent = outputDiv.innerHTML;
+        console.log('[CodeBlock] Output generated, length:', outputContent.length);
+
+        // 5. Create or update D3Visualization
+        if (obj.outputId && !obj.appendMode) {
+          console.log('[CodeBlock] Updating existing visualization:', obj.outputId);
+          // Update existing visualization
+          onUpdateVisualization({
+            id: obj.outputId,
+            content: outputContent
+          });
+
+          // Update controls and state
+          onUpdate({
+            controls: controls,
+            error: undefined,
+            lastExecuted: Date.now()
+          });
+        } else {
+          console.log('[CodeBlock] Creating new visualization (append mode: ' + obj.appendMode + ')');
+          // Create new visualization to the right of CodeBlock
+          // In append mode, stack vertically below existing ones
+          let vizX = obj.x + obj.width + 20;
+          let vizY = obj.y;
+
+          if (obj.appendMode && obj.outputId) {
+            // Find position below existing visualizations from this codeblock
+            vizY = obj.y + 370; // Height + spacing
+          }
+
+          const newVizId = `viz-${Date.now()}`;
+          const newViz: D3VisualizationObj = {
+            id: newVizId,
+            type: 'd3viz',
+            x: vizX,
+            y: vizY,
+            width: 450,
+            height: 350,
+            content: outputContent,
+            sourceCodeBlockId: obj.id
+          };
+
+          // Pass both the viz AND the codeblock updates together
+          // This ensures a single atomic state update
+          onCreateVisualization(newViz, {
+            controls: controls,
+            error: undefined,
+            lastExecuted: Date.now(),
+            // In append mode, keep the first outputId as reference, but we track all via a different mechanism
+            outputId: obj.appendMode ? (obj.outputId || newVizId) : newVizId
+          });
+        }
+
+        console.log('[CodeBlock] Execution completed successfully');
+        setIsExecuting(false);
+      } catch (error) {
+        console.error('[CodeBlock] Execution error:', error);
+        onUpdate({
+          error: error instanceof Error ? error.message : String(error),
+          lastExecuted: Date.now()
+        });
+        setIsExecuting(false);
+      }
+    }, 10);
+  };
+
+  const handleControlChange = (controlId: string, newValue: any) => {
+    console.log('[CodeBlock] Control changed:', controlId, newValue);
+
+    // Update controls only - NO auto re-execution
+    // User must click "Run" to see changes
+    const updatedControls = obj.controls?.map(c =>
+      c.id === controlId ? { ...c, value: newValue } : c
+    );
+
+    onUpdate({ controls: updatedControls });
+
+    // TODO: Re-enable auto-execution when history system is fixed
+    // For now, require manual "Run" click to avoid state corruption
+  };
+
+  const isFolded = obj.isFolded;
+  const foldedHeight = 45; // Just the toolbar
+  const originalHeight = obj.unfoldedHeight || obj.height || 400;
+  const displayHeight = isFolded ? foldedHeight : originalHeight;
+
+  return (
+    <Group
+      id={obj.id}
+      x={obj.x}
+      y={obj.y}
+      onClick={isSelectMode ? onSelect : undefined}
+      onTap={isSelectMode ? onSelect : undefined}
+      draggable={isSelectMode && draggable && !isEditing}
+      onDblClick={isSelectMode ? handleDoubleClick : undefined}
+      onDblTap={isSelectMode ? handleDoubleClick : undefined}
+      listening={isSelectMode}
+    >
+      <Html
+        divProps={{
+          style: {
+            // Allow events to pass through to canvas when in drawing mode
+            pointerEvents: isSelectMode ? 'auto' : 'none',
+            userSelect: isEditing ? 'auto' : 'none'
+          }
+        }}
+      >
+        <div
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            handleDoubleClick();
+          }}
+          style={{
+            width: `${obj.width}px`,
+            height: `${displayHeight}px`,
+            minHeight: `${foldedHeight}px`,
+            border: isSelected ? '2px solid #3b82f6' : '1px solid #d1d5db',
+            borderRadius: '8px',
+            backgroundColor: 'white',
+            overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            cursor: isEditing ? 'text' : 'default',
+            // Allow drawing through when not in select mode
+            pointerEvents: isSelectMode ? 'auto' : 'none',
+            transition: 'height 0.2s ease'
+          }}
+        >
+          {/* Toolbar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              backgroundColor: '#f3f4f6',
+              borderBottom: '1px solid #d1d5db',
+              pointerEvents: 'auto' // Toolbar can capture events
+            }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                executeCode();
+              }}
+              disabled={isExecuting}
+              style={{
+                padding: '4px 12px',
+                backgroundColor: isExecuting ? '#9ca3af' : '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isExecuting ? 'not-allowed' : 'pointer',
+                fontSize: '13px',
+                fontWeight: '500'
+              }}
+            >
+              {isExecuting ? 'Running...' : 'Run'}
+            </button>
+
+            {/* Fold toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const newIsFolded = !obj.isFolded;
+                if (newIsFolded) {
+                  // Folding: save current height as unfoldedHeight
+                  onUpdate({ 
+                    isFolded: true,
+                    unfoldedHeight: obj.height || 400
+                  });
+                } else {
+                  // Unfolding: restore original height
+                  onUpdate({ 
+                    isFolded: false,
+                    height: obj.unfoldedHeight || obj.height || 400
+                  });
+                }
+              }}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: '#e5e7eb',
+                color: '#374151',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              {obj.isFolded ? '▶' : '▼'} Fold
+            </button>
+
+            {/* Append mode toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUpdate({ appendMode: !obj.appendMode });
+              }}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: obj.appendMode ? '#dbeafe' : '#e5e7eb',
+                color: obj.appendMode ? '#1d4ed8' : '#374151',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              {obj.appendMode ? '⊕ Append' : '↻ Replace'}
+            </button>
+
+            {obj.lastExecuted && !obj.error && (
+              <span style={{ fontSize: '12px', color: '#10b981' }}>
+                ✓ Executed
+              </span>
+            )}
+
+            {obj.error && (
+              <span style={{ fontSize: '12px', color: '#ef4444' }}>
+                Error: {obj.error}
+              </span>
+            )}
+
+            <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#6b7280' }}>
+              {isEditing ? 'Editing (Cmd+Enter to run, Esc to exit)' : 'Double-click to edit'}
+            </div>
+          </div>
+
+          {/* Code Editor Area - hidden when folded */}
+          {!obj.isFolded && (
+            <div style={{ position: 'relative', pointerEvents: isEditing ? 'auto' : 'none' }}>
+              {isEditing ? (
+                <div
+                  ref={editorRef}
+                  style={{
+                    width: '100%',
+                    minHeight: '200px',
+                    fontSize: `${obj.fontSize}px`,
+                    pointerEvents: 'auto'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: '12px',
+                    fontFamily: 'monospace',
+                    fontSize: `${obj.fontSize}px`,
+                    backgroundColor: '#282c34',
+                    color: '#abb2bf',
+                    overflow: 'auto',
+                    maxHeight: '300px',
+                    minHeight: '150px',
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  {obj.code}
+                </pre>
+              )}
+            </div>
+          )}
+
+          {/* Controls Area - hidden when folded */}
+          {!obj.isFolded && obj.controls && obj.controls.length > 0 && (
+            <div
+              style={{
+                padding: '12px',
+                backgroundColor: '#f9fafb',
+                borderTop: '1px solid #d1d5db',
+                pointerEvents: 'auto' // Controls can capture events
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
+                Controls
+              </div>
+              {obj.controls.map((control) => (
+                <ControlWidget
+                  key={control.id}
+                  control={control}
+                  onChange={(value) => handleControlChange(control.id, value)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </Html>
+
+      {/* Transparent rect for selection */}
+      <Rect
+        width={obj.width}
+        height={displayHeight}
+        fill="transparent"
+        onDblClick={isSelectMode ? handleDoubleClick : undefined}
+        onDblTap={isSelectMode ? handleDoubleClick : undefined}
+      />
+    </Group>
+  );
+};

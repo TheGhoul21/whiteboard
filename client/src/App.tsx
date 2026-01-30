@@ -5,7 +5,7 @@ import { FrameManager } from './components/FrameManager';
 import { Minimap } from './components/Minimap';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { ExportDialog, type ExportMode } from './components/ExportDialog';
-import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj } from './types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj, CodeBlockObj, D3VisualizationObj } from './types';
 import Konva from 'konva';
 import jsPDF from 'jspdf';
 import useHistory from './hooks/useHistory';
@@ -19,6 +19,8 @@ interface AppState {
    codes: CodeObj[];
    notes: NoteObj[];
    frames: FrameObj[];
+   codeblocks: CodeBlockObj[];
+   d3visualizations: D3VisualizationObj[];
 }
 
 const initialState: AppState = {
@@ -29,7 +31,9 @@ const initialState: AppState = {
    latex: [],
    codes: [],
    notes: [],
-   frames: []
+   frames: [],
+   codeblocks: [],
+   d3visualizations: []
 };
 
 const DEFAULT_SIZES: Record<ToolType, number> = {
@@ -79,7 +83,28 @@ function App() {
   const stageRef = useRef<Konva.Stage | null>(null);
 
   const handleUpdate = useCallback((newState: Partial<AppState>, overwrite = false) => {
-     setState(prev => ({ ...prev, ...newState }), overwrite);
+     console.log('[App] handleUpdate called with:', {
+       keys: Object.keys(newState),
+       codeblocks: newState.codeblocks?.length,
+       d3visualizations: newState.d3visualizations?.length,
+       overwrite,
+       caller: new Error().stack?.split('\n')[2]?.trim() // Track who called this
+     });
+
+     // GUARD: Ignore empty updates that would corrupt state
+     if (Object.keys(newState).length === 0) {
+       console.warn('[App] BLOCKED empty update - ignoring');
+       return;
+     }
+
+     setState(prev => {
+       const next = { ...prev, ...newState };
+       console.log('[App] State after update:', {
+         codeblocks: next.codeblocks?.length,
+         d3visualizations: next.d3visualizations?.length
+       });
+       return next;
+     }, overwrite);
      hasUnsavedChanges.current = true;
   }, [setState]);
 
@@ -109,7 +134,7 @@ function App() {
       const saved = localStorage.getItem('whiteboard-autosave');
       if (saved) {
         const data = JSON.parse(saved);
-        const { strokes, images, texts, shapes, latex, codes, notes, frames, background: savedBg, zoom: savedZoom, viewPos: savedViewPos } = data;
+        const { strokes, images, texts, shapes, latex, codes, notes, frames, codeblocks, d3visualizations, background: savedBg, zoom: savedZoom, viewPos: savedViewPos } = data;
         setState({
           strokes: strokes || [],
           images: images || [],
@@ -118,7 +143,9 @@ function App() {
           latex: latex || [],
           codes: codes || [],
           notes: notes || [],
-          frames: frames || []
+          frames: frames || [],
+          codeblocks: codeblocks || [],
+          d3visualizations: d3visualizations || []
         }, true);
         if (savedBg) setBackground(savedBg);
         if (savedZoom) setZoom(savedZoom);
@@ -170,10 +197,78 @@ function App() {
       setState(initialState);
     }
   };
-  
+
+  const handleCreateCodeBlock = () => {
+    if (!state) return;
+
+    const newCodeBlock: CodeBlockObj = {
+      id: Date.now().toString(),
+      type: 'codeblock',
+      code: `// Example: Interactive Linear Regression
+
+const slope = slider('Slope', -2, 2, 1, 0.1);
+const intercept = slider('Intercept', -10, 10, 0, 0.5);
+
+// Generate data points
+const data = Array.from({length: 50}, (_, i) => {
+  const x = i / 5;
+  const y = slope * x + intercept + (Math.random() - 0.5) * 2;
+  return {x, y};
+});
+
+// Setup
+const margin = {top: 20, right: 20, bottom: 40, left: 50};
+const width = 400 - margin.left - margin.right;
+const height = 300 - margin.top - margin.bottom;
+
+const svg = d3.select(output)
+  .append('svg')
+  .attr('width', width + margin.left + margin.right)
+  .attr('height', height + margin.top + margin.bottom)
+  .append('g')
+  .attr('transform', \`translate(\${margin.left},\${margin.top})\`);
+
+// Scales
+const xScale = d3.scaleLinear().domain([0, 10]).range([0, width]);
+const yScale = d3.scaleLinear().domain([-20, 20]).range([height, 0]);
+
+// Axes
+svg.append('g').attr('transform', \`translate(0,\${height})\`).call(d3.axisBottom(xScale));
+svg.append('g').call(d3.axisLeft(yScale));
+
+// Plot points
+svg.selectAll('circle')
+  .data(data)
+  .join('circle')
+  .attr('cx', d => xScale(d.x))
+  .attr('cy', d => yScale(d.y))
+  .attr('r', 3)
+  .attr('fill', 'steelblue');
+
+// Regression line
+const line = d3.line().x(d => xScale(d[0])).y(d => yScale(d[1]));
+svg.append('path')
+  .datum([[0, intercept], [10, slope * 10 + intercept]])
+  .attr('fill', 'none')
+  .attr('stroke', 'red')
+  .attr('stroke-width', 2)
+  .attr('d', line);`,
+      x: (-viewPos.x + window.innerWidth / 2) / zoom - 250,
+      y: (-viewPos.y + window.innerHeight / 2) / zoom - 200,
+      width: 500,
+      height: 400,
+      fontSize: 14,
+      controls: []
+    };
+
+    handleUpdate({ codeblocks: [...state.codeblocks, newCodeBlock] });
+    setSelectedIds([newCodeBlock.id]);
+    setTool('select');
+  };
+
   const copySelection = () => {
      if (!state || selectedIds.length === 0) return;
-     
+
      const selection: Partial<AppState> = {
         strokes: state.strokes.filter(s => selectedIds.includes(s.id)),
         images: state.images.filter(i => selectedIds.includes(i.id)),
@@ -182,12 +277,23 @@ function App() {
         latex: state.latex.filter(l => selectedIds.includes(l.id)),
         codes: state.codes.filter(c => selectedIds.includes(c.id)),
         notes: state.notes.filter(n => selectedIds.includes(n.id)),
+        codeblocks: state.codeblocks.filter(cb => selectedIds.includes(cb.id)),
+        d3visualizations: state.d3visualizations.filter(v => selectedIds.includes(v.id)),
      };
      clipboard.current = selection;
   };
 
   const deleteSelection = () => {
      if (!state || selectedIds.length === 0) return;
+
+     // When deleting a CodeBlock, also delete its linked visualization
+     const codeBlocksToDelete = state.codeblocks.filter(cb => selectedIds.includes(cb.id));
+     const linkedVizIds = codeBlocksToDelete.map(cb => cb.outputId).filter(Boolean) as string[];
+
+     // When deleting a Visualization, clear outputId from source CodeBlock
+     const vizsToDelete = state.d3visualizations.filter(v => selectedIds.includes(v.id));
+     const sourceCodeBlockIds = vizsToDelete.map(v => v.sourceCodeBlockId);
+
      handleUpdate({
         strokes: state.strokes.filter(s => !selectedIds.includes(s.id)),
         images: state.images.filter(i => !selectedIds.includes(i.id)),
@@ -196,6 +302,10 @@ function App() {
         latex: state.latex.filter(l => !selectedIds.includes(l.id)),
         codes: state.codes.filter(c => !selectedIds.includes(c.id)),
         notes: state.notes.filter(n => !selectedIds.includes(n.id)),
+        codeblocks: state.codeblocks
+           .filter(cb => !selectedIds.includes(cb.id))
+           .map(cb => sourceCodeBlockIds.includes(cb.id) ? { ...cb, outputId: undefined } : cb),
+        d3visualizations: state.d3visualizations.filter(v => !selectedIds.includes(v.id) && !linkedVizIds.includes(v.id)),
      });
      setSelectedIds([]);
   };
@@ -251,6 +361,37 @@ function App() {
         return { ...n, id, x: n.x + offset, y: n.y + offset };
      });
 
+     // Map old IDs to new IDs for codeblocks and visualizations
+     const idMap = new Map<string, string>();
+
+     const newCodeBlocks = (data.codeblocks || []).map(cb => {
+        const id = Date.now() + Math.random().toString();
+        newIds.push(id);
+        idMap.set(cb.id, id);
+        return { ...cb, id, x: cb.x + offset, y: cb.y + offset, outputId: undefined };
+     });
+
+     const newD3Visualizations = (data.d3visualizations || []).map(v => {
+        const id = Date.now() + Math.random().toString();
+        newIds.push(id);
+        const newSourceId = idMap.get(v.sourceCodeBlockId);
+        return { ...v, id, x: v.x + offset, y: v.y + offset, sourceCodeBlockId: newSourceId || v.sourceCodeBlockId };
+     });
+
+     // Update outputId references in codeblocks
+     const vizIdMap = new Map<string, string>();
+     (data.d3visualizations || []).forEach((v, i) => {
+        vizIdMap.set(v.id, newD3Visualizations[i].id);
+     });
+
+     const finalCodeBlocks = newCodeBlocks.map(cb => {
+        const originalCb = (data.codeblocks || []).find(original => idMap.get(original.id) === cb.id);
+        if (originalCb?.outputId && vizIdMap.has(originalCb.outputId)) {
+           return { ...cb, outputId: vizIdMap.get(originalCb.outputId) };
+        }
+        return cb;
+     });
+
      handleUpdate({
         strokes: [...state.strokes, ...newStrokes],
         images: [...state.images, ...newImages],
@@ -259,6 +400,8 @@ function App() {
         latex: [...state.latex, ...newLatex],
         codes: [...state.codes, ...newCodes],
         notes: [...state.notes, ...newNotes],
+        codeblocks: [...state.codeblocks, ...finalCodeBlocks],
+        d3visualizations: [...state.d3visualizations, ...newD3Visualizations],
      });
      
      setSelectedIds(newIds);
@@ -356,7 +499,9 @@ function App() {
               ...state.shapes.map(s => s.id),
               ...state.latex.map(l => l.id),
               ...state.codes.map(c => c.id),
-              ...state.notes.map(n => n.id)
+              ...state.notes.map(n => n.id),
+              ...state.codeblocks.map(cb => cb.id),
+              ...state.d3visualizations.map(v => v.id)
            ];
            setSelectedIds(allIds);
            return;
@@ -462,8 +607,8 @@ function App() {
     const stage = stageRef.current;
     
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const hasItems = state.strokes.length + state.images.length + state.texts.length + state.shapes.length + state.latex.length + state.codes.length + state.notes.length > 0;
-    
+    const hasItems = state.strokes.length + state.images.length + state.texts.length + state.shapes.length + state.latex.length + state.codes.length + state.notes.length + state.codeblocks.length + state.d3visualizations.length > 0;
+
     if (!hasItems) {
        alert("Nothing to export");
        return;
@@ -497,7 +642,7 @@ function App() {
        maxY = Math.max(maxY, t.y + estimatedH);
     });
     
-    [...state.latex, ...state.codes, ...state.notes].forEach(obj => {
+    [...state.latex, ...state.codes, ...state.notes, ...state.codeblocks, ...state.d3visualizations].forEach(obj => {
        const w = 'width' in obj ? obj.width : 200;
        const h = 'height' in obj ? obj.height : 100;
        minX = Math.min(minX, obj.x);
@@ -579,7 +724,7 @@ function App() {
 
     // Calculate content bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const hasItems = state.strokes.length + state.images.length + state.texts.length + state.shapes.length + state.latex.length + state.codes.length + state.notes.length > 0;
+    const hasItems = state.strokes.length + state.images.length + state.texts.length + state.shapes.length + state.latex.length + state.codes.length + state.notes.length + state.codeblocks.length + state.d3visualizations.length > 0;
 
     if (!hasItems) {
        alert("Nothing to export");
@@ -610,7 +755,7 @@ function App() {
        maxX = Math.max(maxX, t.x + t.text.length * (t.fontSize * 0.6));
        maxY = Math.max(maxY, t.y + t.fontSize * 1.2);
     });
-    [...state.latex, ...state.codes, ...state.notes].forEach(obj => {
+    [...state.latex, ...state.codes, ...state.notes, ...state.codeblocks, ...state.d3visualizations].forEach(obj => {
        const w = 'width' in obj ? obj.width : 200;
        const h = 'height' in obj ? obj.height : 100;
        minX = Math.min(minX, obj.x);
@@ -818,6 +963,7 @@ function App() {
         onSave={handleSave}
         onExport={() => setShowExportDialog(true)}
         onImportImages={(newImages) => handleUpdate({ images: [...currentState.images, ...newImages] })}
+        onCreateCodeBlock={handleCreateCodeBlock}
       />
       )}
 
@@ -842,6 +988,8 @@ function App() {
         latex={currentState.latex}
         codes={currentState.codes}
         notes={currentState.notes}
+        codeblocks={currentState.codeblocks}
+        d3visualizations={currentState.d3visualizations}
         background={background}
         onUpdate={handleUpdate}
         stageRef={stageRef}
@@ -863,6 +1011,8 @@ function App() {
          latex={currentState.latex}
          codes={currentState.codes}
          notes={currentState.notes}
+         codeblocks={currentState.codeblocks}
+         d3visualizations={currentState.d3visualizations}
          stageX={viewPos.x}
          stageY={viewPos.y}
          stageScale={zoom}

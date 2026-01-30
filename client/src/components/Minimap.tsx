@@ -1,6 +1,6 @@
 import React from 'react';
 import { Stage, Layer, Line, Rect } from 'react-konva';
-import type { Stroke, ImageObj, TextObj, ShapeObj, LatexObj, CodeObj, NoteObj } from '../types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj } from '../types';
 
 interface MinimapProps {
   strokes: Stroke[];
@@ -10,6 +10,8 @@ interface MinimapProps {
   latex?: LatexObj[];
   codes?: CodeObj[];
   notes?: NoteObj[];
+  codeblocks?: CodeBlockObj[];
+  d3visualizations?: D3VisualizationObj[];
   // Viewport state
   stageX: number;
   stageY: number;
@@ -29,6 +31,8 @@ export const Minimap: React.FC<MinimapProps> = ({
   latex = [],
   codes = [],
   notes = [],
+  codeblocks = [],
+  d3visualizations = [],
   stageX,
   stageY,
   stageScale,
@@ -43,7 +47,7 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   // 1. Calculate Bounding Box of all content
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const allItemsCount = strokes.length + images.length + texts.length + shapes.length + latex.length + codes.length + notes.length;
+  const allItemsCount = strokes.length + images.length + texts.length + shapes.length + latex.length + codes.length + notes.length + codeblocks.length + d3visualizations.length;
 
   if (allItemsCount === 0) {
      // Default bounds if empty
@@ -72,7 +76,7 @@ export const Minimap: React.FC<MinimapProps> = ({
         // Estimate text size
         maxX = Math.max(maxX, t.x + 100); maxY = Math.max(maxY, t.y + 20); 
      });
-     [...latex, ...codes, ...notes].forEach(obj => {
+     [...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].forEach(obj => {
         const w = 'width' in obj ? obj.width : 100;
         const h = 'height' in obj ? obj.height : 50;
         minX = Math.min(minX, obj.x); minY = Math.min(minY, obj.y);

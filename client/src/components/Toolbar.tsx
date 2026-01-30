@@ -29,8 +29,28 @@ interface ToolbarProps {
   onImportImages: (images: ImageObj[]) => void;
 }
 
-const LIGHT_COLORS = ['#000000', '#df4b26', '#228B22', '#0000FF', '#FFD700', '#808080'];
-const DARK_COLORS = ['#FFFFFF', '#FF6B6B', '#4ADE80', '#60A5FA', '#FACC15', '#9CA3AF'];
+// Soft, muted palettes for relaxed teaching (inspired by Nord/Gruvbox)
+const LIGHT_COLORS = [
+  '#2E3440',  // Slate Gray (soft, not harsh black)
+  '#BF616A',  // Muted Rose (terracotta red)
+  '#D08770',  // Soft Orange (peachy)
+  '#A3BE8C',  // Sage Green (calming)
+  '#5E81AC',  // Denim Blue (soft blue)
+  '#B48EAD',  // Dusty Purple (mauve)
+  '#88C0D0',  // Soft Cyan (sky blue)
+  '#4C566A',  // Cool Gray (neutral)
+];
+
+const DARK_COLORS = [
+  '#ECEFF4',  // Snow White (warm off-white)
+  '#D08770',  // Warm Coral (cozy red)
+  '#EBCB8B',  // Honey Yellow (soft gold)
+  '#A3BE8C',  // Moss Green (natural)
+  '#81A1C1',  // Periwinkle Blue (calm)
+  '#B48EAD',  // Lavender Mist (gentle purple)
+  '#88C0D0',  // Powder Blue (soft cyan)
+  '#D8DEE9',  // Pearl Gray (subtle)
+];
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   tool,
@@ -82,25 +102,25 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Tools */}
       <div className="flex gap-1 border-r pr-3 border-gray-300">
-        <button className={btnClass('select')} onClick={() => setTool('select')} title="Select / Box Select (V)">
+        <button className={btnClass('select')} onClick={() => setTool('select')} title="Select / Box Select (1)">
           <MousePointer2 size={20} />
         </button>
-        <button className={btnClass('hand')} onClick={() => setTool('hand')} title="Pan Tool (Right-Click also pans)">
+        <button className={btnClass('hand')} onClick={() => setTool('hand')} title="Pan Tool (H)">
           <Hand size={20} />
         </button>
-        <button className={btnClass('pen')} onClick={() => setTool('pen')} title="Standard Pen (P)">
+        <button className={btnClass('pen')} onClick={() => setTool('pen')} title="Standard Pen (2)">
           <Pen size={20} />
         </button>
-        <button className={btnClass('smooth-pen')} onClick={() => setTool('smooth-pen')} title="Fountain Pen (Calligraphy)">
+        <button className={btnClass('smooth-pen')} onClick={() => setTool('smooth-pen')} title="Smooth / Calligraphy Pen">
           <PenTool size={20} />
         </button>
-        <button className={btnClass('highlighter')} onClick={() => setTool('highlighter')} title="Highlighter (Semi-transparent marker)">
+        <button className={btnClass('highlighter')} onClick={() => setTool('highlighter')} title="Highlighter (3)">
           <Highlighter size={20} />
         </button>
-        <button className={btnClass('laser')} onClick={() => setTool('laser')} title="Laser Pointer (Fades automatically)">
+        <button className={btnClass('laser')} onClick={() => setTool('laser')} title="Laser Pointer (4)">
           <Zap size={20} />
         </button>
-        <button className={btnClass('pointer')} onClick={() => setTool('pointer')} title="Spotlight Pointer (For presentations)">
+        <button className={btnClass('pointer')} onClick={() => setTool('pointer')} title="Spotlight Pointer (5)">
           <Focus size={20} />
         </button>
         <button className={btnClass('eraser')} onClick={() => setTool('eraser')} title="Eraser (E)">

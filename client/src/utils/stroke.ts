@@ -37,6 +37,54 @@ export function getSvgPathFromStroke(stroke: number[][], size: number = 8, thinn
   return d;
 }
 
+// Premium calligraphy pen with natural handwriting feel
+export function getCalligraphyPath(stroke: number[][], size: number = 8): string {
+  if (stroke.length === 0) return '';
+
+  const points = getStroke(stroke, {
+    size: size,
+    thinning: 0.65,        // High thinning for calligraphy effect (thins on speed)
+    smoothing: 0.85,       // Very smooth curves
+    streamline: 0.65,      // High streamline for fluid motion
+    easing: (t) => Math.sin((t * Math.PI) / 2), // Smooth easing
+    start: {
+      taper: 15,           // Taper at start for pen-like entry
+      easing: (t) => t * t,
+      cap: true,
+    },
+    end: {
+      taper: 20,           // Taper at end for pen-like exit
+      easing: (t) => t * t,
+      cap: true,
+    },
+    simulatePressure: true, // Simulate pressure variation
+    last: true,            // Use last point for better endings
+  });
+
+  const len = points.length;
+  if (len < 2) return '';
+
+  // Use quadratic Bezier curves for ultra-smooth rendering
+  let d = `M ${points[0][0]} ${points[0][1]}`;
+
+  for (let i = 1; i < len - 1; i++) {
+    const curr = points[i];
+    const next = points[i + 1];
+    const xc = (curr[0] + next[0]) / 2;
+    const yc = (curr[1] + next[1]) / 2;
+    d += ` Q ${curr[0]} ${curr[1]}, ${xc} ${yc}`;
+  }
+
+  // Final point
+  if (len > 1) {
+    const last = points[len - 1];
+    d += ` L ${last[0]} ${last[1]}`;
+  }
+
+  d += ' Z';
+  return d;
+}
+
 // Helper to convert our [x1, y1, x2, y2...] flat format to [[x,y], [x,y]...]
 export function flatToPoints(flat: number[]): number[][] {
   const points: number[][] = [];

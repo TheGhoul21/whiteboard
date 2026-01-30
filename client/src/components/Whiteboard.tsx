@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj } from '../types';
-import { getSvgPathFromStroke, flatToPoints, smoothPoints } from '../utils/stroke';
+import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
+import { A4Grid } from './A4Grid';
 
 interface WhiteboardProps {
   tool: ToolType;
@@ -27,6 +28,7 @@ interface WhiteboardProps {
   setZoom: (z: number) => void;
   viewPos: { x: number, y: number };
   setViewPos: (pos: { x: number, y: number }) => void;
+  a4GridVisible?: boolean;
 }
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({
@@ -49,7 +51,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   zoom,
   setZoom,
   viewPos,
-  setViewPos
+  setViewPos,
+  a4GridVisible = false
 }) => {
   const isDrawing = useRef(false);
   const isSelecting = useRef(false);
@@ -319,16 +322,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
          return;
       }
 
-      // If clicking on background but we have selection, check if overlay exists
-      // Don't clear selection immediately - wait for mouse move to confirm box selection
+      // Clicking on background - clear selection and start box selection
       const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-      if (!isModifier && selectedIds.length === 0) {
-         // No selection, start box selection
-         isSelecting.current = true;
-         selectionStart.current = pos;
-         setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
-      } else if (!isModifier) {
-         // Has selection - start potential box selection but clear only on move
+      if (!isModifier) {
+         // Clear existing selection when clicking background
+         setSelectedIds([]);
+         // Start box selection
          isSelecting.current = true;
          selectionStart.current = pos;
          setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
@@ -932,7 +931,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               );
            }
            if (stroke.tool === 'smooth-pen') {
-              const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size, 0.25);
+              const pathData = getCalligraphyPath(flatToPoints(stroke.points), stroke.size);
               return (
                  <Path
                     key={stroke.id}
@@ -944,6 +943,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     onDragEnd={handleDragEnd}
                     globalCompositeOperation="source-over"
                     hitStrokeWidth={20}
+                    shadowColor="rgba(0,0,0,0.15)"
+                    shadowBlur={1}
+                    shadowOffset={{ x: 0.5, y: 0.5 }}
+                    shadowOpacity={0.3}
                  />
               );
            }
@@ -1134,6 +1137,17 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             listening={false}
           />
         </Layer>
+      )}
+
+      {/* A4 Grid Overlay */}
+      {a4GridVisible && (
+        <A4Grid
+          stageWidth={window.innerWidth}
+          stageHeight={window.innerHeight}
+          stageScale={zoom}
+          stageX={viewPos.x}
+          stageY={viewPos.y}
+        />
       )}
     </Stage>
   );

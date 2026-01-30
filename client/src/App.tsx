@@ -3,6 +3,8 @@ import { Whiteboard } from './components/Whiteboard';
 import { Toolbar } from './components/Toolbar';
 import { FrameManager } from './components/FrameManager';
 import { Minimap } from './components/Minimap';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { ExportDialog, type ExportMode } from './components/ExportDialog';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj } from './types';
 import Konva from 'konva';
 import jsPDF from 'jspdf';
@@ -59,11 +61,18 @@ function App() {
 
   const [background, setBackground] = useState<BackgroundType>('white');
   const [zoom, setZoom] = useState(1);
-  const [viewPos, setViewPos] = useState({ x: 0, y: 0 }); 
+  const [viewPos, setViewPos] = useState({ x: 0, y: 0 });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [isSpacebarPressed, setIsSpacebarPressed] = useState(false);
+  const [showAutoSaveNotification, setShowAutoSaveNotification] = useState(false);
+  const [a4GridVisible, setA4GridVisible] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+
   // Internal Clipboard
   const clipboard = useRef<Partial<AppState> | null>(null);
+  const hasUnsavedChanges = useRef(false);
   
   const { state, setState, undo, redo, canUndo, canRedo } = useHistory<AppState>(initialState);
   
@@ -71,7 +80,77 @@ function App() {
 
   const handleUpdate = useCallback((newState: Partial<AppState>, overwrite = false) => {
      setState(prev => ({ ...prev, ...newState }), overwrite);
+     hasUnsavedChanges.current = true;
   }, [setState]);
+
+  // Auto-save to localStorage
+  const autoSave = useCallback(() => {
+    if (!state) return;
+    try {
+      const dataToSave = {
+        ...state,
+        background,
+        zoom,
+        viewPos,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('whiteboard-autosave', JSON.stringify(dataToSave));
+      hasUnsavedChanges.current = false;
+      setShowAutoSaveNotification(true);
+      setTimeout(() => setShowAutoSaveNotification(false), 2000);
+    } catch (e) {
+      console.error('Auto-save failed:', e);
+    }
+  }, [state, background, zoom, viewPos]);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('whiteboard-autosave');
+      if (saved) {
+        const data = JSON.parse(saved);
+        const { strokes, images, texts, shapes, latex, codes, notes, frames, background: savedBg, zoom: savedZoom, viewPos: savedViewPos } = data;
+        setState({
+          strokes: strokes || [],
+          images: images || [],
+          texts: texts || [],
+          shapes: shapes || [],
+          latex: latex || [],
+          codes: codes || [],
+          notes: notes || [],
+          frames: frames || []
+        }, true);
+        if (savedBg) setBackground(savedBg);
+        if (savedZoom) setZoom(savedZoom);
+        if (savedViewPos) setViewPos(savedViewPos);
+        hasUnsavedChanges.current = false;
+      }
+    } catch (e) {
+      console.error('Failed to load auto-save:', e);
+    }
+  }, []);
+
+  // Auto-save interval (every 10 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (hasUnsavedChanges.current) {
+        autoSave();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [autoSave]);
+
+  // Warn on close if unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   const handleColorChange = (newColor: string) => {
      setColor(newColor);
@@ -191,6 +270,18 @@ function App() {
         const tagName = document.activeElement?.tagName.toLowerCase();
         if (tagName === 'input' || tagName === 'textarea') return;
 
+        // Close overlays with Escape
+        if (e.key === 'Escape') {
+          if (showShortcuts) {
+            setShowShortcuts(false);
+            return;
+          }
+          if (showExportDialog) {
+            setShowExportDialog(false);
+            return;
+          }
+        }
+
         // Undo/Redo
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
            if (e.shiftKey) redo();
@@ -271,9 +362,46 @@ function App() {
            return;
         }
 
+        // Presentation Mode Toggle
+        if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          setPresentationMode(prev => !prev);
+          return;
+        }
+
+        // A4 Grid Toggle
+        if (e.key === 'g' || e.key === 'G') {
+          e.preventDefault();
+          setA4GridVisible(prev => !prev);
+          return;
+        }
+
+        // Shortcuts Overlay Toggle
+        if (e.key === '?') {
+          e.preventDefault();
+          setShowShortcuts(prev => !prev);
+          return;
+        }
+
+        // Tool Hotkeys - prevent tool switching during spacebar pan
+        if (isSpacebarPressed) return;
+
+        // Number keys for primary tools
+        if (e.key === '1') { e.preventDefault(); setTool('select'); return; }
+        if (e.key === '2') { e.preventDefault(); setTool('pen'); return; }
+        if (e.key === '3') { e.preventDefault(); setTool('highlighter'); return; }
+        if (e.key === '4') { e.preventDefault(); setTool('laser'); return; }
+        if (e.key === '5') { e.preventDefault(); setTool('pointer'); return; }
+
+        // Letter keys for secondary tools
+        if (e.key === 'e' || e.key === 'E') { e.preventDefault(); setTool('eraser'); return; }
+        if (e.key === 'h' || e.key === 'H') { e.preventDefault(); setTool('hand'); return; }
+        if (e.key === 't' || e.key === 'T') { e.preventDefault(); setTool('text'); return; }
+
         // Spacebar Pan
         if (e.code === 'Space' && !e.repeat) {
            e.preventDefault();
+           setIsSpacebarPressed(true); // Track spacebar state
            setTool(current => {
               if (current !== 'hand') {
                  previousToolRef.current = current;
@@ -286,6 +414,7 @@ function App() {
 
      const handleKeyUp = (e: KeyboardEvent) => {
         if (e.code === 'Space') {
+           setIsSpacebarPressed(false); // Clear spacebar state
            setTool(current => {
               if (current === 'hand') {
                  return previousToolRef.current;
@@ -328,7 +457,7 @@ function App() {
     }
   };
 
-  const handleExport = async () => {
+  const exportFullCanvas = async () => {
     if (!stageRef.current || !state) return;
     const stage = stageRef.current;
     
@@ -441,6 +570,193 @@ function App() {
     pdf.save('whiteboard.pdf');
   };
 
+  const exportA4Pages = async () => {
+    if (!stageRef.current || !state) return;
+    const stage = stageRef.current;
+
+    const A4_WIDTH = 794;
+    const A4_HEIGHT = 1123;
+
+    // Calculate content bounds
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const hasItems = state.strokes.length + state.images.length + state.texts.length + state.shapes.length + state.latex.length + state.codes.length + state.notes.length > 0;
+
+    if (!hasItems) {
+       alert("Nothing to export");
+       return;
+    }
+
+    // Calculate bounds (same logic as exportFullCanvas)
+    state.strokes.forEach(s => {
+       if (s.tool === 'laser') return;
+       for(let i=0; i<s.points.length; i+=2) {
+          const x = s.points[i];
+          const y = s.points[i+1];
+          minX = Math.min(minX, x);
+          maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+       }
+    });
+    state.images.forEach(img => {
+       minX = Math.min(minX, img.x);
+       minY = Math.min(minY, img.y);
+       maxX = Math.max(maxX, img.x + img.width);
+       maxY = Math.max(maxY, img.y + img.height);
+    });
+    state.texts.forEach(t => {
+       minX = Math.min(minX, t.x);
+       minY = Math.min(minY, t.y);
+       maxX = Math.max(maxX, t.x + t.text.length * (t.fontSize * 0.6));
+       maxY = Math.max(maxY, t.y + t.fontSize * 1.2);
+    });
+    [...state.latex, ...state.codes, ...state.notes].forEach(obj => {
+       const w = 'width' in obj ? obj.width : 200;
+       const h = 'height' in obj ? obj.height : 100;
+       minX = Math.min(minX, obj.x);
+       minY = Math.min(minY, obj.y);
+       maxX = Math.max(maxX, obj.x + w);
+       maxY = Math.max(maxY, obj.y + h);
+    });
+    state.shapes.forEach(s => {
+       minX = Math.min(minX, s.x);
+       minY = Math.min(minY, s.y);
+       maxX = Math.max(maxX, s.x + (s.width || 50));
+       maxY = Math.max(maxY, s.y + (s.height || 50));
+    });
+
+    // Snap to A4 grid
+    const startCol = Math.floor(minX / A4_WIDTH);
+    const endCol = Math.ceil(maxX / A4_WIDTH);
+    const startRow = Math.floor(minY / A4_HEIGHT);
+    const endRow = Math.ceil(maxY / A4_HEIGHT);
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'px',
+      format: [A4_WIDTH, A4_HEIGHT]
+    });
+
+    const oldScale = stage.scale();
+    const oldPos = stage.position();
+    let firstPage = true;
+
+    for (let row = startRow; row < endRow; row++) {
+      for (let col = startCol; col < endCol; col++) {
+        const pageX = col * A4_WIDTH;
+        const pageY = row * A4_HEIGHT;
+
+        stage.scale({x: 1, y: 1});
+        stage.position({x: -pageX, y: -pageY});
+        stage.batchDraw();
+        await new Promise(r => setTimeout(r, 10));
+
+        const dataUrl = stage.toDataURL({
+          x: 0,
+          y: 0,
+          width: A4_WIDTH,
+          height: A4_HEIGHT,
+          pixelRatio: 2,
+          mimeType: 'image/jpeg',
+          quality: 0.9
+        });
+
+        if (!firstPage) pdf.addPage();
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, A4_WIDTH, A4_HEIGHT);
+        firstPage = false;
+      }
+    }
+
+    stage.scale(oldScale);
+    stage.position(oldPos);
+    stage.batchDraw();
+
+    pdf.save('whiteboard-a4.pdf');
+  };
+
+  const exportFramesAsSlides = async () => {
+    if (!stageRef.current || !state) return;
+    if (state.frames.length === 0) {
+      alert("No frames to export");
+      return;
+    }
+
+    const stage = stageRef.current;
+    const A4_WIDTH = 794;
+    const A4_HEIGHT = 1123;
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'px',
+      format: [A4_WIDTH, A4_HEIGHT]
+    });
+
+    const oldScale = stage.scale();
+    const oldPos = stage.position();
+
+    for (let i = 0; i < state.frames.length; i++) {
+      const frame = state.frames[i];
+
+      stage.scale({x: frame.scale, y: frame.scale});
+      stage.position({x: frame.x, y: frame.y});
+      stage.batchDraw();
+      await new Promise(r => setTimeout(r, 10));
+
+      // Calculate visible area at this frame
+      const viewW = A4_WIDTH / frame.scale;
+      const viewH = A4_HEIGHT / frame.scale;
+      const viewX = -frame.x / frame.scale;
+      const viewY = -frame.y / frame.scale;
+
+      // Reset to 1:1 for export
+      stage.scale({x: 1, y: 1});
+      stage.position({x: -viewX, y: -viewY});
+      stage.batchDraw();
+      await new Promise(r => setTimeout(r, 10));
+
+      const dataUrl = stage.toDataURL({
+        x: 0,
+        y: 0,
+        width: viewW,
+        height: viewH,
+        pixelRatio: 2,
+        mimeType: 'image/jpeg',
+        quality: 0.9
+      });
+
+      if (i > 0) pdf.addPage();
+
+      // Scale to fit A4
+      const scale = Math.min(A4_WIDTH / viewW, A4_HEIGHT / viewH);
+      const scaledW = viewW * scale;
+      const scaledH = viewH * scale;
+      const offsetX = (A4_WIDTH - scaledW) / 2;
+      const offsetY = (A4_HEIGHT - scaledH) / 2;
+
+      pdf.addImage(dataUrl, 'JPEG', offsetX, offsetY, scaledW, scaledH);
+    }
+
+    stage.scale(oldScale);
+    stage.position(oldPos);
+    stage.batchDraw();
+
+    pdf.save('whiteboard-slides.pdf');
+  };
+
+  const handleExport = async (mode: ExportMode) => {
+    switch (mode) {
+      case 'full-canvas':
+        await exportFullCanvas();
+        break;
+      case 'a4-pages':
+        await exportA4Pages();
+        break;
+      case 'frames-slides':
+        await exportFramesAsSlides();
+        break;
+    }
+  };
+
   const handleAddFrame = (label: string) => {
      if (!stageRef.current || !state) return;
      const stage = stageRef.current;
@@ -477,8 +793,12 @@ function App() {
 
   const currentState = state || initialState;
 
+  // Determine minimap visibility: show when panning, hide in presentation mode
+  const showMinimap = !presentationMode && (tool === 'hand' || isSpacebarPressed);
+
   return (
     <div className="w-full h-screen bg-gray-50 overflow-hidden">
+      {!presentationMode && (
       <Toolbar 
         tool={tool}
         setTool={setTool}
@@ -496,16 +816,19 @@ function App() {
         onRedo={redo}
         onClear={handleClear}
         onSave={handleSave}
-        onExport={handleExport}
+        onExport={() => setShowExportDialog(true)}
         onImportImages={(newImages) => handleUpdate({ images: [...currentState.images, ...newImages] })}
       />
-      
+      )}
+
+      {!presentationMode && (
       <FrameManager 
          frames={currentState.frames}
          onAddFrame={handleAddFrame}
          onDeleteFrame={handleDeleteFrame}
          onGoToFrame={handleGoToFrame}
       />
+      )}
 
       <Whiteboard
         tool={tool}
@@ -528,8 +851,10 @@ function App() {
         setZoom={setZoom}
         viewPos={viewPos}
         setViewPos={setViewPos}
+        a4GridVisible={a4GridVisible}
       />
-      
+
+      {showMinimap && (
       <Minimap
          strokes={currentState.strokes}
          images={currentState.images}
@@ -547,6 +872,29 @@ function App() {
             setViewPos({ x, y });
          }}
       />
+      )}
+
+      {/* Auto-save notification */}
+      {showAutoSaveNotification && (
+        <div className="fixed bottom-4 left-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Auto-saved
+        </div>
+      )}
+
+      {/* Keyboard shortcuts overlay */}
+      {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
+
+      {/* Export dialog */}
+      {showExportDialog && (
+        <ExportDialog
+          onClose={() => setShowExportDialog(false)}
+          onExport={handleExport}
+          hasFrames={currentState.frames.length > 0}
+        />
+      )}
     </div>
   );
 }

@@ -136,7 +136,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   const minStroke = Math.max(1, 2 / scale); 
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white border border-gray-300 shadow-xl rounded-lg overflow-hidden z-50">
+    <div className="fixed bottom-4 right-4 bg-white border border-gray-300 shadow-xl rounded-lg overflow-hidden z-50 transition-opacity duration-300 ease-in-out">
        <Stage width={WIDTH} height={HEIGHT} onClick={handleMapClick} onTap={handleMapClick}>
           <Layer>
              <Rect width={WIDTH} height={HEIGHT} fill="#ffffff" />

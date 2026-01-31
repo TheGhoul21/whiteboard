@@ -37,24 +37,37 @@ export function getSvgPathFromStroke(stroke: number[][], size: number = 8, thinn
   return d;
 }
 
-// Premium calligraphy pen with natural handwriting feel
+// Direct fountain pen - responsive feel for fast, small writing
 export function getCalligraphyPath(stroke: number[][], size: number = 8): string {
   if (stroke.length === 0) return '';
 
+  // Calculate average velocity for adaptive parameters
+  let totalDistance = 0;
+  for (let i = 1; i < stroke.length; i++) {
+    const dx = stroke[i][0] - stroke[i-1][0];
+    const dy = stroke[i][1] - stroke[i-1][1];
+    totalDistance += Math.sqrt(dx*dx + dy*dy);
+  }
+  
+  const avgDistance = stroke.length > 1 ? totalDistance / (stroke.length - 1) : 0;
+  const isFast = avgDistance > 3;
+
+  // Fast writing = more responsive, less smoothing
+  // Small size = less thinning for consistent width
   const points = getStroke(stroke, {
-    size: size * 1.1,      // Slightly larger base for smoother appearance
-    thinning: 0.55,        // Moderate thinning (less extreme variation = smoother)
-    smoothing: 0.95,       // Maximum smoothing for ultra-fluid curves
-    streamline: 0.85,      // Very high streamline for continuous flow
-    easing: (t) => t * (2 - t), // Smooth ease-out for natural deceleration
+    size: size * 1.1,
+    thinning: isFast ? 0.4 : 0.6,
+    smoothing: isFast ? 0.35 : 0.5,
+    streamline: isFast ? 0.45 : 0.6,
+    easing: (t) => t,
     start: {
-      taper: 25,           // Longer taper for gradual pen entry
-      easing: (t) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
+      taper: 8,
+      easing: (t) => t,
       cap: true,
     },
     end: {
-      taper: 30,           // Longer taper for gradual pen exit
-      easing: (t) => 1 - Math.pow(1 - t, 3), // Cubic ease-out
+      taper: 12,
+      easing: (t) => t,
       cap: true,
     },
     simulatePressure: true,
@@ -64,23 +77,11 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8): string
   const len = points.length;
   if (len < 2) return '';
 
-  // Use Catmull-Rom to cubic Bezier conversion for maximum smoothness
+  // Direct drawing - straight lines for precise following
   let d = `M ${points[0][0]} ${points[0][1]}`;
-
-  // Generate smooth cubic Bezier curves through all points
-  for (let i = 0; i < len - 1; i++) {
-    const p0 = i > 0 ? points[i - 1] : points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = i < len - 2 ? points[i + 2] : points[i + 1];
-
-    // Catmull-Rom to Bezier control points conversion
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
-
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2[0]} ${p2[1]}`;
+  
+  for (let i = 1; i < len; i++) {
+    d += ` L ${points[i][0]} ${points[i][1]}`;
   }
 
   d += ' Z';
@@ -94,50 +95,6 @@ export function flatToPoints(flat: number[]): number[][] {
     points.push([flat[i], flat[i + 1]]);
   }
   return points;
-}
-
-// Simplify points using Ramer-Douglas-Peucker algorithm to reduce angles
-function simplifyPoints(points: number[][], epsilon: number = 1.0): number[][] {
-  if (points.length <= 2) return points;
-
-  // Find the point with the maximum distance
-  let maxDist = 0;
-  let index = 0;
-  const end = points.length - 1;
-
-  for (let i = 1; i < end; i++) {
-    const dist = perpendicularDistance(points[i], points[0], points[end]);
-    if (dist > maxDist) {
-      maxDist = dist;
-      index = i;
-    }
-  }
-
-  // If max distance is greater than epsilon, recursively simplify
-  if (maxDist > epsilon) {
-    const left = simplifyPoints(points.slice(0, index + 1), epsilon);
-    const right = simplifyPoints(points.slice(index), epsilon);
-    return [...left.slice(0, -1), ...right];
-  } else {
-    return [points[0], points[end]];
-  }
-}
-
-function perpendicularDistance(point: number[], lineStart: number[], lineEnd: number[]): number {
-  const [x, y] = point;
-  const [x1, y1] = lineStart;
-  const [x2, y2] = lineEnd;
-
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-
-  if (dx === 0 && dy === 0) {
-    return Math.sqrt((x - x1) ** 2 + (y - y1) ** 2);
-  }
-
-  const num = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1);
-  const den = Math.sqrt(dx ** 2 + dy ** 2);
-  return num / den;
 }
 
 // Smooth points using moving average for more natural curves

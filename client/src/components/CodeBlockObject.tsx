@@ -36,7 +36,6 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   const [isExecuting, setIsExecuting] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const isSelectMode = tool === 'select';
-  const isDrawingMode = ['pen', 'smooth-pen', 'highlighter', 'eraser', 'laser', 'rect', 'circle', 'arrow', 'text'].includes(tool);
   const editorViewRef = useRef<EditorView | null>(null);
 
   // Initialize CodeMirror editor
@@ -269,8 +268,9 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
 
   const isFolded = obj.isFolded;
   const foldedHeight = 45; // Just the toolbar
+  const minHeight = 200; // Minimum height when unfolded
   const originalHeight = obj.unfoldedHeight || obj.height || 400;
-  const displayHeight = isFolded ? foldedHeight : originalHeight;
+  const displayHeight = isFolded ? foldedHeight : Math.max(originalHeight, minHeight);
 
   return (
     <Group
@@ -310,7 +310,9 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             cursor: isEditing ? 'text' : 'default',
             // Allow drawing through when not in select mode
             pointerEvents: isSelectMode ? 'auto' : 'none',
-            transition: 'height 0.2s ease'
+            transition: 'height 0.2s ease',
+            display: 'flex',
+            flexDirection: 'column'
           }}
         >
           {/* Toolbar */}
@@ -322,7 +324,8 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
               padding: '8px 12px',
               backgroundColor: '#f3f4f6',
               borderBottom: '1px solid #d1d5db',
-              pointerEvents: 'auto' // Toolbar can capture events
+              pointerEvents: 'auto', // Toolbar can capture events
+              flexShrink: 0 // Toolbar doesn't shrink
             }}
           >
             <button
@@ -413,64 +416,80 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             </div>
           </div>
 
-          {/* Code Editor Area - hidden when folded */}
+          {/* Content Area - hidden when folded */}
           {!obj.isFolded && (
-            <div style={{ position: 'relative', pointerEvents: isEditing ? 'auto' : 'none' }}>
-              {isEditing ? (
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              flex: 1, 
+              overflow: 'hidden',
+              pointerEvents: isEditing ? 'auto' : 'none' 
+            }}>
+              {/* Code Editor Area */}
+              <div style={{ 
+                flex: '0 0 auto', 
+                minHeight: '120px',
+                maxHeight: '250px',
+                overflow: 'auto',
+                position: 'relative'
+              }}>
+                {isEditing ? (
+                  <div
+                    ref={editorRef}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      fontSize: `${obj.fontSize}px`,
+                      pointerEvents: 'auto'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: '12px',
+                      fontFamily: 'monospace',
+                      fontSize: `${obj.fontSize}px`,
+                      backgroundColor: '#282c34',
+                      color: '#abb2bf',
+                      overflow: 'auto',
+                      height: '100%',
+                      whiteSpace: 'pre-wrap',
+                      wordWrap: 'break-word',
+                      pointerEvents: 'none'
+                    }}
+                  >
+                    {obj.code}
+                  </pre>
+                )}
+              </div>
+
+              {/* Controls Area - always visible when controls exist */}
+              {obj.controls && obj.controls.length > 0 && (
                 <div
-                  ref={editorRef}
                   style={{
-                    width: '100%',
-                    minHeight: '200px',
-                    fontSize: `${obj.fontSize}px`,
-                    pointerEvents: 'auto'
+                    padding: '12px',
+                    backgroundColor: '#f9fafb',
+                    borderTop: '1px solid #d1d5db',
+                    pointerEvents: 'auto', // Controls can capture events
+                    flex: '0 0 auto', // Controls area doesn't shrink
+                    overflow: 'auto' // Allow scrolling if controls overflow
                   }}
                   onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: '12px',
-                    fontFamily: 'monospace',
-                    fontSize: `${obj.fontSize}px`,
-                    backgroundColor: '#282c34',
-                    color: '#abb2bf',
-                    overflow: 'auto',
-                    maxHeight: '300px',
-                    minHeight: '150px',
-                    whiteSpace: 'pre-wrap',
-                    wordWrap: 'break-word',
-                    pointerEvents: 'none'
-                  }}
                 >
-                  {obj.code}
-                </pre>
+                  <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
+                    Controls
+                  </div>
+                  {obj.controls.map((control) => (
+                    <ControlWidget
+                      key={control.id}
+                      control={control}
+                      onChange={(value) => handleControlChange(control.id, value)}
+                    />
+                  ))}
+                </div>
               )}
-            </div>
-          )}
-
-          {/* Controls Area - hidden when folded */}
-          {!obj.isFolded && obj.controls && obj.controls.length > 0 && (
-            <div
-              style={{
-                padding: '12px',
-                backgroundColor: '#f9fafb',
-                borderTop: '1px solid #d1d5db',
-                pointerEvents: 'auto' // Controls can capture events
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
-                Controls
-              </div>
-              {obj.controls.map((control) => (
-                <ControlWidget
-                  key={control.id}
-                  control={control}
-                  onChange={(value) => handleControlChange(control.id, value)}
-                />
-              ))}
             </div>
           )}
         </div>

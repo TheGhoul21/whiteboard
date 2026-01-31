@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj } from '../types';
-import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints } from '../utils/stroke';
+import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
 import { CodeBlockObject } from './CodeBlockObject';
@@ -104,6 +104,36 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const overlayDragStart = useRef<{x: number, y: number} | null>(null);
 
   const [selectionOverlay, setSelectionOverlay] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+
+  const getCursorForTool = (tool: ToolType): string => {
+    switch (tool) {
+      case 'select':
+        return 'default';
+      case 'hand':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7m0 0h3m-3 0l3-3m0 0v3"/></svg>') 12 12, auto`;
+      case 'pen':
+      case 'smooth-pen':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%23000" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M9 11l-2 2"/></svg>') 2 2, crosshair`;
+      case 'highlighter':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="%23ffeb3b" stroke="%23f57c00" stroke-width="1"><path d="M2 12l2-2 7 7-2 2L2 12z M21 3l-7 7-3-3 7-7 3 3z"/></svg>') 10 10, crosshair`;
+      case 'eraser':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="%23ffffff" stroke="black" stroke-width="2" stroke-linejoin="round"><rect x="2" y="12" width="20" height="8" rx="1"/><path d="M20 12l-6-6-4 4 6 6 4-4z"/></svg>') 10 10, auto`;
+      case 'laser':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" fill="red"/><path d="M12 2v6M12 16v6" stroke="red" stroke-width="2"/><path d="M2 12h6M16 12h6" stroke="red" stroke-width="2"/></svg>') 8 8, crosshair`;
+      case 'pointer':
+        return 'none';
+      case 'text':
+        return 'text';
+      case 'rect':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 8 8, crosshair`;
+      case 'circle':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>') 8 8, crosshair`;
+      case 'arrow':
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><path d="M5 12h14m-7-7l7 7-7 7"/></svg>') 10 10, crosshair`;
+      default:
+        return 'default';
+    }
+  };
 
   const getSelectionBBox = () => {
      if (selectedIds.length < 1) return null;
@@ -1006,26 +1036,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       onMousemove={handleMouseMove}
       onMouseup={handleMouseUp}
       onTouchStart={handleMouseDown}
-      onTouchMove={handleMouseMove}
-      onTouchEnd={handleMouseUp}
-      onContextMenu={(e) => e.evt.preventDefault()}
-      onWheel={(e) => {
-        // Prevent browser back/forward navigation on Mac
-        if (e.evt.ctrlKey || Math.abs(e.evt.deltaX) > Math.abs(e.evt.deltaY)) {
-          e.evt.preventDefault();
-        }
-      }}
       onTouchMove={(e) => {
         // Prevent browser navigation on touch devices
         if (tool === 'hand' || isPanning.current) {
           e.evt.preventDefault();
         }
+        handleMouseMove(e);
       }}
-      draggable={tool === 'hand'}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      ref={stageRef as any}
+      onTouchEnd={handleMouseUp}
+      onContextMenu={(e) => e.evt.preventDefault()}
+      style={{ cursor: getCursorForTool(tool) }}
       onWheel={(e) => {
         e.evt.preventDefault();
         const stage = e.target.getStage();

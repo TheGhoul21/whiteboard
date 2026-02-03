@@ -1,111 +1,141 @@
-# Interactive Code Blocks Documentation
+# Interactive Code Blocks Guide
 
-Interactive code blocks allow you to write and execute JavaScript code that generates D3 visualizations with live controls. They're perfect for data exploration, teaching, and presentations.
+Interactive Code Blocks let you write JavaScript code that generates D3.js visualizations directly on your whiteboard. Perfect for data visualization, teaching, and interactive presentations.
 
-## Overview
+## Quick Start
 
-A code block consists of:
-- **Code Editor**: Write JavaScript with CodeMirror (syntax highlighting, autocomplete)
-- **Controls**: Interactive widgets (sliders, inputs, checkboxes) generated from your code
-- **Visualization Output**: D3-generated charts rendered as an image on the canvas
-
-## Creating a Code Block
-
-### Method 1: From the UI
 1. Click the **{} Code** button in the toolbar
-2. A new code block appears centered on screen with default example code
+2. A code block appears with an interactive linear regression example
+3. Click **Run** (or `Cmd+Enter`) to execute and generate the visualization
+4. Adjust the sliders to change parameters
+5. Click **Run** again to update the visualization
 
-### Method 2: Programmatically
-```typescript
-const newCodeBlock = {
-  id: Date.now().toString(),
-  type: 'codeblock',
-  code: '// Your JavaScript code here',
-  x: 100,
-  y: 100,
-  width: 500,
-  height: 400,
-  fontSize: 14,
-  controls: []
-};
-```
+## What You Get
 
-## The Sandbox API
+Each code block provides:
+- **CodeMirror editor**: Syntax highlighting, autocomplete, keyboard shortcuts
+- **Interactive controls**: Sliders, text inputs, and checkboxes defined in your code
+- **D3 visualizations**: Rendered as images on the canvas, positioned to the right of the code block
+- **Two output modes**: Replace (update existing visualization) or Append (stack multiple outputs)
 
-Your code runs in a controlled sandbox with these injected variables:
+## The Sandbox Environment
+
+Your code executes in a controlled sandbox with these injected globals:
 
 ### `output` (HTMLDivElement)
-A div element where you append your D3 visualization.
-
-### `d3` (D3 library)
-Full D3 v7 library available for data visualization.
-
-### Control Functions
-
-#### `slider(label, min, max, initial, step?)`
-Creates an interactive slider control.
-```javascript
-const radius = slider('Circle Radius', 10, 100, 50, 5);
-// Returns the current value (starts at 50)
-```
-
-#### `input(label, initial)`
-Creates a text input control.
-```javascript
-const title = input('Chart Title', 'My Chart');
-// Returns the current text value
-```
-
-#### `checkbox(label, initial)`
-Creates a checkbox control.
-```javascript
-const showGrid = checkbox('Show Grid', true);
-// Returns boolean
-```
-
-#### `log(message)`
-Logs to browser console for debugging.
-```javascript
-log('Current radius: ' + radius);
-```
-
-## Example: Basic D3 Chart
+An empty div element where you build your D3 visualization.
 
 ```javascript
-// Get slider value
-const radius = slider('Radius', 10, 100, 50, 5);
-const color = input('Color', '#ff6b6b');
-
-// Create SVG using D3
+// Append SVG to the output div
 const svg = d3.select(output)
   .append('svg')
   .attr('width', 400)
   .attr('height', 300);
-
-// Draw circle
-svg.append('circle')
-  .attr('cx', 200)
-  .attr('cy', 150)
-  .attr('r', radius)
-  .attr('fill', color);
 ```
 
-## Example: Interactive Data Visualization
+### `d3` (D3.js v7)
+The full D3 library is available for creating visualizations.
 
 ```javascript
-// Parameters
-const dataPoints = slider('Data Points', 10, 200, 50, 10);
-const jitter = slider('Jitter', 0, 5, 1, 0.1);
-const showTrend = checkbox('Show Trend Line', true);
+// Use any D3 functions
+const scale = d3.scaleLinear().domain([0, 100]).range([0, 400]);
+```
 
-// Generate data
-const data = Array.from({length: dataPoints}, (_, i) => ({
-  x: i,
-  y: Math.sin(i / 10) * 50 + 150 + (Math.random() - 0.5) * jitter * 10
-}));
+### Control Functions
 
-// Setup D3
-const margin = {top: 20, right: 20, bottom: 30, left: 40};
+These functions define interactive controls AND return their current values:
+
+#### `slider(label, min, max, initial, step)`
+Creates a slider control.
+
+```javascript
+const radius = slider('Circle Radius', 10, 100, 50, 5);
+// Returns 50 on first run, then the adjusted value on subsequent runs
+```
+
+**Parameters:**
+- `label` (string): Display label for the slider
+- `min` (number): Minimum value
+- `max` (number): Maximum value
+- `initial` (number): Starting value (used only on first run)
+- `step` (number, optional): Increment step (default: 1)
+
+**Returns:** Current slider value (number)
+
+#### `input(label, initial)`
+Creates a text input control.
+
+```javascript
+const title = input('Chart Title', 'My Chart');
+// Returns 'My Chart' on first run, then user's typed value
+```
+
+**Parameters:**
+- `label` (string): Display label
+- `initial` (string): Starting text value
+
+**Returns:** Current input text (string)
+
+#### `checkbox(label, initial)`
+Creates a checkbox control.
+
+```javascript
+const showGrid = checkbox('Show Grid Lines', true);
+// Returns true on first run, then checked state
+```
+
+**Parameters:**
+- `label` (string): Display label
+- `initial` (boolean): Starting checked state
+
+**Returns:** Current checkbox state (boolean)
+
+#### `log(message)`
+Logs to the browser console for debugging.
+
+```javascript
+log('Current value: ' + radius);
+// Output appears in browser DevTools console
+```
+
+## How Execution Works
+
+### First Run
+1. You click **Run** or press `Cmd+Enter`
+2. Code executes and control functions collect their definitions
+3. Controls are created with `initial` values
+4. D3 code runs using those initial values
+5. Visualization appears to the right of the code block
+6. Controls appear below the code editor
+
+### Subsequent Runs
+1. Adjust control values in the UI (does NOT auto-execute)
+2. Click **Run** again
+3. Control functions return the adjusted values (NOT the initial values)
+4. D3 code runs with new values
+5. Visualization updates (Replace mode) or new one appears (Append mode)
+
+**Important:** Changing controls does NOT automatically re-execute. You must click **Run** to see changes.
+
+## Default Example Code
+
+When you create a new code block, you get this interactive linear regression example:
+
+```javascript
+// Example: Interactive Linear Regression
+
+const slope = slider('Slope', -2, 2, 1, 0.1);
+const intercept = slider('Intercept', -10, 10, 0, 0.5);
+
+// Generate data points
+const data = Array.from({length: 50}, (_, i) => {
+  const x = i / 5;
+  const y = slope * x + intercept + (Math.random() - 0.5) * 2;
+  return {x, y};
+});
+
+// Setup
+const margin = {top: 20, right: 20, bottom: 40, left: 50};
 const width = 400 - margin.left - margin.right;
 const height = 300 - margin.top - margin.bottom;
 
@@ -117,209 +147,395 @@ const svg = d3.select(output)
   .attr('transform', `translate(${margin.left},${margin.top})`);
 
 // Scales
-const xScale = d3.scaleLinear()
-  .domain([0, dataPoints])
-  .range([0, width]);
-
-const yScale = d3.scaleLinear()
-  .domain([0, 300])
-  .range([height, 0]);
+const xScale = d3.scaleLinear().domain([0, 10]).range([0, width]);
+const yScale = d3.scaleLinear().domain([-20, 20]).range([height, 0]);
 
 // Axes
-svg.append('g')
-  .attr('transform', `translate(0,${height})`)
-  .call(d3.axisBottom(xScale));
+svg.append('g').attr('transform', `translate(0,${height})`).call(d3.axisBottom(xScale));
+svg.append('g').call(d3.axisLeft(yScale));
 
-svg.append('g')
-  .call(d3.axisLeft(yScale));
-
-// Data points
+// Plot points
 svg.selectAll('circle')
   .data(data)
   .join('circle')
   .attr('cx', d => xScale(d.x))
   .attr('cy', d => yScale(d.y))
   .attr('r', 3)
-  .attr('fill', '#4ecdc4');
+  .attr('fill', 'steelblue');
 
-// Trend line
-if (showTrend) {
-  const line = d3.line()
-    .x(d => xScale(d.x))
-    .y(d => yScale(d.y))
-    .curve(d3.curveMonotoneX);
-  
-  svg.append('path')
-    .datum(data)
-    .attr('fill', 'none')
-    .attr('stroke', '#ff6b6b')
-    .attr('stroke-width', 2)
-    .attr('d', line);
-}
+// Regression line
+const line = d3.line().x(d => xScale(d[0])).y(d => yScale(d[1]));
+svg.append('path')
+  .datum([[0, intercept], [10, slope * 10 + intercept]])
+  .attr('fill', 'none')
+  .attr('stroke', 'red')
+  .attr('stroke-width', 2)
+  .attr('d', line);
 ```
 
-## UI Controls
+## UI Features
 
 ### Code Block Toolbar
+
 - **Run**: Execute the code and generate/update visualization
-- **Fold/Unfold**: Collapse to just the toolbar (saves space)
-- **Replace/Append**: Toggle between replacing existing viz or adding new one
+- **▼ Fold**: Collapse to toolbar-only view (saves space)
+- **▶ Fold**: Expand to show code and controls
+- **↻ Replace**: Update existing visualization when running (default)
+- **⊕ Append**: Create new visualization each run, stacked vertically
+- **✓ Executed**: Shows when last run was successful
+- **Error: ...**: Displays execution errors
 
-### Editor Shortcuts
-- `Cmd/Ctrl + Enter`: Run code
-- `Esc`: Exit editor mode
+### Keyboard Shortcuts
 
-### Canvas Shortcuts
-- `Double-click`: Enter edit mode
-- `Delete/Backspace`: Delete selected code block
+**In edit mode:**
+- `Cmd+Enter` (Mac) / `Ctrl+Enter` (Windows): Execute code
+- `Escape`: Exit edit mode
 
-## Visualization Modes
+**In select mode:**
+- Double-click: Enter edit mode
+- `Delete` / `Backspace`: Delete selected code block
 
-### Replace Mode (default)
-- Updates the existing visualization when you run
-- Maintains the same position on canvas
-- Good for iterating on a single chart
+### Output Modes
 
-### Append Mode
-- Creates a new visualization each time you run
-- Stacks vertically below existing visualizations
-- Good for comparing different parameter sets
+**Replace Mode (default ↻)**
+- Updates the existing visualization
+- Maintains position on canvas
+- Best for iterating on a single chart
 
-## Control Persistence
+**Append Mode (⊕)**
+- Creates a new visualization each run
+- Positions new visualizations vertically below previous ones
+- Useful for comparing different parameter combinations
+- All visualizations remain linked to the source code block
 
-Controls remember their values between runs:
-1. First run: Controls are created with initial values
-2. Adjust controls in the UI
-3. Re-run code: Controls keep adjusted values (not reset to initial)
-4. To reset: Delete and recreate the code block
+## Technical Architecture
 
-## Technical Details
+### Type Definitions
 
-### State Management
+**CodeBlockObj:**
 ```typescript
-interface CodeBlockObj {
+{
   id: string;
   type: 'codeblock';
   code: string;              // JavaScript source
-  x, y: number;             // Position
-  width, height: number;    // Dimensions
-  fontSize: number;
-  
+  x, y: number;             // Canvas position
+  width, height: number;    // Dimensions (default: 500x400)
+  fontSize: number;         // Editor font size (default: 14)
+
   // Execution state
-  lastExecuted?: number;    // Timestamp
-  error?: string;          // Error message if failed
-  
+  lastExecuted?: number;    // Timestamp of last execution
+  error?: string;          // Error message if execution failed
+
   // Interactive controls
   controls?: CodeBlockControl[];
-  
-  // Linked visualization
-  outputId?: string;       // ID of D3VisualizationObj
-  
+
+  // Visualization linking
+  outputId?: string;       // ID of linked D3VisualizationObj
+
   // UI state
   isFolded?: boolean;
   unfoldedHeight?: number;
-  appendMode?: boolean;
+  appendMode?: boolean;    // Toggle between Replace/Append
 }
 ```
 
-### Code Execution Flow
-1. User clicks **Run** or presses `Cmd+Enter`
-2. Create sandbox environment with `output`, `d3`, and control functions
-3. Control functions collect widget definitions (not values yet)
-4. Execute user code via `new Function()`
-5. Code runs, control functions return current values
-6. D3 generates visualization in `output` div
-7. Extract HTML content from `output`
-8. Create or update `D3VisualizationObj` with the content
-9. Render controls UI below code editor
+**D3VisualizationObj:**
+```typescript
+{
+  id: string;
+  type: 'd3viz';
+  x, y: number;             // Position (automatically placed right of code block)
+  width, height: number;    // Dimensions (default: 450x350)
+  content: string;          // HTML/SVG content from D3
+  sourceCodeBlockId: string; // Backreference to code block
+}
+```
 
-### Security
-- Code runs in sandboxed `Function` constructor (not `eval`)
-- No access to global scope or DOM except `output` div
-- D3 library is pre-loaded and injected
-- No network requests allowed from sandbox
+**CodeBlockControl:**
+```typescript
+{
+  id: string;
+  type: 'slider' | 'text' | 'checkbox';
+  label: string;
+  value: number | string | boolean;
+  min?: number;            // For sliders
+  max?: number;            // For sliders
+  step?: number;           // For sliders
+}
+```
 
-### Rendering Pipeline
-1. D3 generates SVG/HTML in virtual DOM (`output` div)
-2. Serialize to string
-3. Create canvas with white background
-4. Render SVG to canvas using `drawImage`
-5. Convert canvas to PNG data URL
-6. Load PNG into Konva Image object
-7. Display on whiteboard canvas
+### Execution Pipeline
+
+When you click **Run**:
+
+1. **Setup**: Create empty `output` div and control value map from existing controls
+2. **Sandbox Creation**: Inject `output`, `d3`, and control functions
+3. **Code Execution**:
+   - User code runs via `new Function()` (safer than `eval`)
+   - Control functions capture definitions and return current values
+   - D3 code generates SVG/HTML in the `output` div
+4. **Extract Output**: Serialize `output.innerHTML` to string
+5. **Update State**:
+   - **Replace mode**: Update existing visualization's content
+   - **Append mode**: Create new D3VisualizationObj positioned 20px right and below
+6. **Store Controls**: Save control definitions with current values
+7. **Render Visualization**: Convert HTML/SVG to PNG and display on canvas
+
+### Visualization Rendering Process
+
+D3VisualizationObject converts HTML/SVG to images:
+
+1. Create temporary DOM element with the HTML content
+2. Wait 100ms for rendering to complete
+3. If SVG found:
+   - Serialize SVG to string
+   - Convert to Blob and create object URL
+   - Draw to canvas with white background
+   - Convert canvas to PNG data URL
+4. If no SVG (HTML content):
+   - Wrap in SVG foreignObject
+   - Follow same rendering process
+5. Load PNG into Konva Image for canvas display
+
+**Note:** Visualizations are rendered as static PNG images. They are NOT live DOM elements.
+
+### Position Calculation
+
+**New visualizations are positioned:**
+- **X**: `codeblock.x + codeblock.width + 20` (20px right of code block)
+- **Y**: `codeblock.y` (aligned with top of code block)
+- **Append mode**: Subsequent visualizations stack vertically with spacing
+
+### Control Value Persistence
+
+Controls maintain state between runs:
+
+1. First execution: Controls created with `initial` values from code
+2. User adjusts controls in UI
+3. Next execution: Control functions return adjusted values, NOT initial values
+4. Controls persist until code block is deleted
+
+**To reset controls:** Delete and recreate the code block.
+
+## Examples
+
+### Simple Bar Chart
+
+```javascript
+const barCount = slider('Bars', 5, 20, 10, 1);
+const maxHeight = slider('Max Height', 50, 200, 150, 10);
+
+const data = Array.from({length: barCount}, () =>
+  Math.random() * maxHeight
+);
+
+const svg = d3.select(output)
+  .append('svg')
+  .attr('width', 400)
+  .attr('height', 300);
+
+const barWidth = 380 / barCount;
+
+svg.selectAll('rect')
+  .data(data)
+  .join('rect')
+  .attr('x', (d, i) => i * barWidth + 10)
+  .attr('y', d => 280 - d)
+  .attr('width', barWidth - 2)
+  .attr('height', d => d)
+  .attr('fill', 'steelblue');
+```
+
+### Animated Circle
+
+```javascript
+const frame = slider('Frame', 0, 100, 0, 1);
+const radius = slider('Radius', 5, 50, 20, 1);
+
+const angle = (frame / 100) * Math.PI * 2;
+const cx = 200 + Math.cos(angle) * 100;
+const cy = 150 + Math.sin(angle) * 100;
+
+const svg = d3.select(output)
+  .append('svg')
+  .attr('width', 400)
+  .attr('height', 300);
+
+svg.append('circle')
+  .attr('cx', cx)
+  .attr('cy', cy)
+  .attr('r', radius)
+  .attr('fill', '#e74c3c');
+
+// Trace path
+svg.append('circle')
+  .attr('cx', 200)
+  .attr('cy', 150)
+  .attr('r', 100)
+  .attr('fill', 'none')
+  .attr('stroke', '#ddd')
+  .attr('stroke-width', 2);
+```
+
+### Conditional Rendering
+
+```javascript
+const showAxes = checkbox('Show Axes', true);
+const showGrid = checkbox('Show Grid', false);
+const dataPoints = slider('Points', 10, 100, 50, 5);
+
+const data = Array.from({length: dataPoints}, (_, i) => ({
+  x: i,
+  y: Math.sin(i / 5) * 50 + 150
+}));
+
+const svg = d3.select(output)
+  .append('svg')
+  .attr('width', 400)
+  .attr('height', 300);
+
+if (showGrid) {
+  // Draw grid lines
+  for (let i = 0; i < 400; i += 40) {
+    svg.append('line')
+      .attr('x1', i).attr('x2', i)
+      .attr('y1', 0).attr('y2', 300)
+      .attr('stroke', '#eee');
+  }
+}
+
+// Plot data
+svg.selectAll('circle')
+  .data(data)
+  .join('circle')
+  .attr('cx', d => d.x * 4)
+  .attr('cy', d => d.y)
+  .attr('r', 2)
+  .attr('fill', 'steelblue');
+
+if (showAxes) {
+  svg.append('line')
+    .attr('x1', 0).attr('x2', 400)
+    .attr('y1', 150).attr('y2', 150)
+    .attr('stroke', 'black');
+}
+```
 
 ## Tips & Best Practices
 
 ### Performance
-- Keep data sets reasonable (< 1000 points for smooth interaction)
-- Use D3 efficiently (don't recreate scales/axes unnecessarily)
-- Complex visualizations may take a moment to render
+- Keep datasets under ~1000 points for smooth interaction
+- Complex visualizations take longer to render as images
+- Folding unused code blocks improves canvas performance
 
 ### Debugging
-- Use `log()` function to see values in browser console
-- Check browser dev tools for execution errors
-- Error messages appear in the toolbar
+- Use `log(value)` to inspect variables in browser console
+- Check toolbar for execution error messages
+- Test simple code first before building complex visualizations
+- Browser DevTools show full error stack traces
 
-### Styling
-- SVG uses default D3 styling
-- You can add inline styles to SVG elements
-- Background is always white
+### Code Organization
+- Define controls at the top for visibility
+- Group related controls together
+- Comment complex D3 chains for clarity
 
-### Sharing
-- Code blocks are saved in the whiteboard JSON
-- Visualizations are saved as rendered images
-- When loading, code blocks show their last state
+### Visualization Best Practices
+- Always set explicit SVG width and height
+- Fill backgrounds explicitly (white is default but not guaranteed)
+- Use D3 margins convention for proper axis spacing
+- Test with different control values to ensure robustness
 
-## Common Patterns
+### Common Patterns
 
-### Responsive Charts
+**Responsive sizing:**
 ```javascript
 const width = slider('Width', 200, 600, 400, 50);
-const height = slider('Height', 200, 500, 300, 50);
-
-const svg = d3.select(output)
-  .append('svg')
-  .attr('width', width)
-  .attr('height', height);
+const height = slider('Height', 150, 500, 300, 50);
 ```
 
-### Color Picking
+**Color selection:**
 ```javascript
-const colorScheme = input('Color', '#3498db');
-// Or use a dropdown by combining with logic
-const theme = slider('Theme', 0, 2, 0, 1);
-const colors = ['#e74c3c', '#3498db', '#2ecc71'];
-const fillColor = colors[theme];
+const colorIndex = slider('Color', 0, 5, 0, 1);
+const colors = ['red', 'blue', 'green', 'orange', 'purple', 'pink'];
+const color = colors[Math.floor(colorIndex)];
 ```
 
-### Animation (Single Frame)
+**Data transformations:**
 ```javascript
-const frame = slider('Frame', 0, 100, 0, 1);
-const angle = (frame / 100) * Math.PI * 2;
-
-// Draw animated position
-svg.append('circle')
-  .attr('cx', 200 + Math.cos(angle) * 100)
-  .attr('cy', 150 + Math.sin(angle) * 100)
-  .attr('r', 10);
+const transform = slider('Transform', 0, 2, 0, 1);
+const transforms = [
+  d => d,                    // Identity
+  d => Math.log(d + 1),     // Log scale
+  d => Math.sqrt(d)         // Square root
+];
+const transformFn = transforms[Math.floor(transform)];
 ```
 
 ## Troubleshooting
 
-**"undefined is not a function"**
-- Check that you're using correct D3 v7 API
-- Some D3 modules may not be available
+### "Undefined is not a function"
+- Check D3 API version (this uses D3 v7)
+- Verify method names: `d3.scaleLinear()` not `d3.scale.linear()`
+- Some D3 modules may not be included
 
-**Visualization not appearing**
-- Make sure you're appending to `output` div
-- Check that SVG has proper width/height
-- Look for errors in toolbar
+### Visualization not appearing
+- Ensure you append to `output`: `d3.select(output).append('svg')`
+- Set explicit SVG dimensions: `.attr('width', 400).attr('height', 300)`
+- Check toolbar for error messages
+- Verify SVG is actually generated: `log(output.innerHTML)`
 
-**Controls not updating**
-- You must click **Run** after changing control values
-- Auto-execution is disabled to prevent performance issues
+### Controls not updating visualization
+- You must click **Run** after changing controls
+- Control changes do NOT auto-execute (performance/stability reasons)
+- Check that your code uses the control variables
 
-**Blank output**
-- Ensure your code generates valid SVG/HTML
-- Check browser console for errors
-- Try simpler code first to verify setup
+### Blank or partial output
+- SVG might be rendering outside viewBox
+- Check coordinate calculations
+- Ensure proper margins and scales
+- White-on-white elements won't be visible
+
+### "Cannot read property of undefined"
+- Check variable names match control labels exactly
+- Verify D3 selections return elements
+- Data array might be empty
+
+### Append mode stacking incorrectly
+- This is a known limitation with complex stacking logic
+- Visualizations stack at fixed Y offset (370px)
+- Consider using Replace mode for iteration
+
+## Limitations
+
+- **No animation**: Visualizations are static PNG images, not live SVG
+- **No interactivity**: Rendered images don't respond to mouse events
+- **Limited HTML**: Complex HTML layouts may not render correctly
+- **No network requests**: Sandbox blocks fetch/AJAX calls
+- **Manual execution**: Control changes require clicking Run
+- **Fixed dimensions**: Visualization size set at creation time
+- **Sandbox restrictions**: No access to DOM outside `output` div
+
+## Advanced Use Cases
+
+### Multi-chart dashboards
+Use Append mode to create multiple related visualizations side-by-side.
+
+### Teaching & presentations
+Fold code blocks to show only results, unfold to explain implementation.
+
+### Data exploration
+Adjust parameters with sliders to quickly explore different views of data.
+
+### Algorithm visualization
+Use frame slider to step through algorithm states.
+
+### Comparative analysis
+Generate multiple visualizations with different parameters using Append mode.
+
+## Saving & Loading
+
+- Code blocks save to whiteboard JSON with all state
+- Visualizations save as rendered content (HTML/SVG strings)
+- On load, visualizations re-render from saved content
+- Controls maintain last-used values
+- Execution history persists across sessions

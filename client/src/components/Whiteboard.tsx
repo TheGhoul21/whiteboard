@@ -1379,16 +1379,24 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             />
          ))}
 
-         {d3visualizations.map(viz => (
-            <D3VisualizationObject
-               key={viz.id}
-               obj={viz}
-               isSelected={selectedIds.includes(viz.id)}
-               onSelect={(e) => handleSmartObjectSelect(e, viz.id)}
-               draggable={tool === 'select' && !isPanning.current}
-               tool={tool}
-            />
-         ))}
+         {d3visualizations.map(viz => {
+            // Check if the source code block is selected
+            const sourceCodeBlockSelected = viz.sourceCodeBlockId
+               ? selectedIds.includes(viz.sourceCodeBlockId)
+               : false;
+
+            return (
+               <D3VisualizationObject
+                  key={viz.id}
+                  obj={viz}
+                  isSelected={selectedIds.includes(viz.id)}
+                  sourceCodeBlockSelected={sourceCodeBlockSelected}
+                  onSelect={(e) => handleSmartObjectSelect(e, viz.id)}
+                  draggable={tool === 'select' && !isPanning.current}
+                  tool={tool}
+               />
+            );
+         })}
 
         {images.map((img) => (
           <KonvaImage

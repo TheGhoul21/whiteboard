@@ -7,6 +7,7 @@ interface D3VisualizationObjectProps {
   obj: D3VisualizationObj;
   onSelect: (e: Konva.KonvaEventObject<MouseEvent>) => void;
   isSelected?: boolean;
+  sourceCodeBlockSelected?: boolean;
   draggable?: boolean;
   tool?: ToolType;
 }
@@ -15,6 +16,7 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
   obj,
   onSelect,
   isSelected = false,
+  sourceCodeBlockSelected = false,
   draggable = true,
   tool = 'select'
 }) => {
@@ -170,6 +172,19 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
           stroke="#3b82f6"
           strokeWidth={2}
           listening={false}
+        />
+      )}
+
+      {/* Source code block selected - highlight this visualization */}
+      {sourceCodeBlockSelected && !isSelected && (
+        <Rect
+          width={obj.width}
+          height={obj.height}
+          stroke="#10b981"
+          strokeWidth={3}
+          dash={[8, 4]}
+          listening={false}
+          opacity={0.8}
         />
       )}
     </Group>

@@ -208,6 +208,19 @@ svg.append('path')
 - Useful for comparing different parameter combinations
 - All visualizations remain linked to the source code block
 
+### Linked Visualization Highlighting
+
+When you select a code block, its linked visualization(s) are automatically highlighted with a **green dashed border**. This helps you:
+- Identify which visualization belongs to which code block
+- Find "invisible" visualizations (e.g., when you accidentally used white colors)
+- Understand the relationship between code and output
+
+**How it works:**
+1. Click to select a code block
+2. Any visualizations created by that code block show a green dashed border
+3. Works with both Replace and Append modes
+4. The highlight disappears when you deselect the code block
+
 ## Technical Architecture
 
 ### Type Definitions
@@ -441,7 +454,9 @@ if (showAxes) {
 
 ### Visualization Best Practices
 - Always set explicit SVG width and height
-- Fill backgrounds explicitly (white is default but not guaranteed)
+- **Never use white colors** - visualizations render on white backgrounds, making white strokes/fills invisible
+- Use visible colors like black, gray, or any other color instead of white
+- Fill backgrounds explicitly if needed (white background is automatic)
 - Use D3 margins convention for proper axis spacing
 - Test with different control values to ensure robustness
 
@@ -493,7 +508,12 @@ const transformFn = transforms[Math.floor(transform)];
 - SVG might be rendering outside viewBox
 - Check coordinate calculations
 - Ensure proper margins and scales
-- White-on-white elements won't be visible
+- **White elements are invisible!** - Visualizations have white backgrounds, so any `stroke: 'white'` or `fill: 'white'` will not be visible. Use black, gray, or any other color instead.
+
+### Visualization appears empty but code runs without errors
+- **Most common cause:** You used white colors (stroke, fill, text) which are invisible on the white background
+- **Solution:** Change all white colors to visible colors like black, gray, blue, etc.
+- Use the linked visualization highlight feature: when you select the code block, the visualization shows a green dashed border
 
 ### "Cannot read property of undefined"
 - Check variable names match control labels exactly

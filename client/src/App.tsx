@@ -410,8 +410,9 @@ svg.append('path')
 
   useEffect(() => {
      const handleKeyDown = (e: KeyboardEvent) => {
-        const tagName = document.activeElement?.tagName.toLowerCase();
-        if (tagName === 'input' || tagName === 'textarea') return;
+         const tagName = document.activeElement?.tagName.toLowerCase();
+         const isContentEditable = document.activeElement?.getAttribute('contenteditable') === 'true';
+         if (tagName === 'input' || tagName === 'textarea' || isContentEditable) return;
 
         // Close overlays with Escape
         if (e.key === 'Escape') {

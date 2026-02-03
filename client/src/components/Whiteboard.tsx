@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj } from '../types';
-import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints } from '../utils/stroke';
+import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints, getSmoothLinePath } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
 import { CodeBlockObject } from './CodeBlockObject';
@@ -252,13 +252,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      let anim: number;
      const animate = () => {
         const now = Date.now();
-        const hasLaser = strokes.some(s => s.tool === 'laser');
-        if (hasLaser) {
-           const activeStrokes = strokes.filter(s => s.tool !== 'laser' || (s.createdAt && now - s.createdAt < 2000));
-           if (activeStrokes.length !== strokes.length) {
-              onUpdate({ strokes: activeStrokes }, true);
-           }
-        }
+         const hasLaser = strokes.some(s => s.tool === 'laser');
+         if (hasLaser) {
+            const activeStrokes = strokes.filter(s => s.tool !== 'laser' || (s.createdAt && now - s.createdAt < 15000));
+            if (activeStrokes.length !== strokes.length) {
+               onUpdate({ strokes: activeStrokes }, true);
+            }
+         }
         anim = requestAnimationFrame(animate);
      };
      anim = requestAnimationFrame(animate);
@@ -422,6 +422,127 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      return () => window.removeEventListener('paste', handlePaste);
   }, [codes, latex, notes, images, color, onUpdate]);
 
+
+  useEffect(() => {
+     // Global mouseup handler to ensure selection finishes even if released outside or swallowed
+     const handleGlobalMouseUp = (e: any) => {
+        if (isSelecting.current && selectionBox) {
+           // Only process box selection if user actually moved (box has size)
+           if (selectionBox.width > 3 || selectionBox.height > 3) {
+              try {
+                const box = selectionBox;
+                const allIds: string[] = [];
+
+                const overlaps = (objBox: {x:number, y:number, width:number, height:number}) => {
+                   return (
+                      box.x < objBox.x + objBox.width &&
+                      box.x + box.width > objBox.x &&
+                      box.y < objBox.y + objBox.height &&
+                      box.y + box.height > objBox.y
+                   );
+                };
+
+                // Check strokes using their actual points data (world coordinates)
+                strokes.forEach(stroke => {
+                   if (stroke.tool === 'laser') return; // Skip laser
+                   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                   for (let i = 0; i < stroke.points.length; i += 2) {
+                      minX = Math.min(minX, stroke.points[i]);
+                      maxX = Math.max(maxX, stroke.points[i]);
+                      minY = Math.min(minY, stroke.points[i + 1]);
+                      maxY = Math.max(maxY, stroke.points[i + 1]);
+                   }
+                   
+                   if (minX === Infinity) return;
+
+                   const strokeBox = {
+                      x: minX - stroke.size / 2,
+                      y: minY - stroke.size / 2,
+                      width: maxX - minX + stroke.size,
+                      height: maxY - minY + stroke.size
+                   };
+                   if (overlaps(strokeBox)) allIds.push(stroke.id);
+                });
+
+                // Check images
+                images.forEach(img => {
+                   const imgBox = { x: img.x, y: img.y, width: img.width, height: img.height };
+                   if (overlaps(imgBox)) allIds.push(img.id);
+                });
+
+                // Check texts
+                texts.forEach(txt => {
+                   const w = txt.text.length * (txt.fontSize * 0.6);
+                   const h = txt.fontSize * 1.2;
+                   const txtBox = { x: txt.x, y: txt.y, width: w, height: h };
+                   if (overlaps(txtBox)) allIds.push(txt.id);
+                });
+
+                // Check shapes
+                shapes.forEach(shape => {
+                   const shapeBox = {
+                      x: shape.x,
+                      y: shape.y,
+                      width: shape.width || 50,
+                      height: shape.height || 50
+                   };
+                   if (overlaps(shapeBox)) allIds.push(shape.id);
+                });
+
+                // Check latex, codes, notes
+                latex.forEach(l => {
+                   const lBox = { x: l.x, y: l.y, width: 100, height: 40 };
+                   if (overlaps(lBox)) allIds.push(l.id);
+                });
+
+                codes.forEach(c => {
+                   const cBox = { x: c.x, y: c.y, width: c.width, height: c.height };
+                   if (overlaps(cBox)) allIds.push(c.id);
+                });
+
+                notes.forEach(n => {
+                   const nBox = { x: n.x, y: n.y, width: n.width, height: n.height };
+                   if (overlaps(nBox)) allIds.push(n.id);
+                });
+
+                // Check codeblocks
+                codeblocks.forEach(cb => {
+                   const cbBox = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+                   if (overlaps(cbBox)) allIds.push(cb.id);
+                });
+
+                // Check d3visualizations
+                d3visualizations.forEach(v => {
+                   const vBox = { x: v.x, y: v.y, width: v.width, height: v.height };
+                   if (overlaps(vBox)) allIds.push(v.id);
+                });
+
+                const isModifier = e.shiftKey || e.ctrlKey || e.metaKey;
+
+                if (isModifier) {
+                   const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
+                   setSelectedIds(uniqueIds);
+                } else {
+                   setSelectedIds(allIds);
+                }
+              } catch (err) {
+                 console.error('Selection error:', err);
+              }
+           }
+           
+           setSelectionBox(null);
+           isSelecting.current = false;
+        }
+     };
+
+     window.addEventListener('mouseup', handleGlobalMouseUp);
+     window.addEventListener('touchend', handleGlobalMouseUp);
+     
+     return () => {
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+        window.removeEventListener('touchend', handleGlobalMouseUp);
+     };
+  }, [selectionBox, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations, selectedIds]);
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     const stage = e.target.getStage();
@@ -588,7 +709,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       if (!lastStroke) return;
 
       // For small writing, we need MORE points, not fewer - only skip extremely close duplicates
-      const minDistance = 0.5;
+      // Use 2 for pen to balance detail with the new bezier smoothing
+      const minDistance = tool === 'pen' ? 2 : 0.5;
       const points = lastStroke.points;
       if (points.length >= 2) {
         const lastX = points[points.length - 2];
@@ -628,8 +750,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     isPanning.current = false;
     lastPointerPos.current = null;
 
-    if (isSelecting.current && selectionBox && stageRef.current) {
-       // Only process box selection if user actually moved (box has size)
+    if (isSelecting.current && selectionBox) {
        if (selectionBox.width > 3 || selectionBox.height > 3) {
           const box = selectionBox;
           const allIds: string[] = [];
@@ -643,102 +764,70 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
              );
           };
 
-          // Check strokes using their actual points data (world coordinates)
           strokes.forEach(stroke => {
-             if (stroke.tool === 'laser') return; // Skip laser
+             if (stroke.tool === 'laser') return;
              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
              for (let i = 0; i < stroke.points.length; i += 2) {
                 minX = Math.min(minX, stroke.points[i]);
                 maxX = Math.max(maxX, stroke.points[i]);
-                minY = Math.min(minY, stroke.points[i + 1]);
-                maxY = Math.max(maxY, stroke.points[i + 1]);
+                minY = Math.min(minY, stroke.points[i+1]);
+                maxY = Math.max(maxY, stroke.points[i+1]);
              }
-             const strokeBox = {
-                x: minX - stroke.size / 2,
-                y: minY - stroke.size / 2,
+             if (minX !== Infinity && overlaps({
+                x: minX - stroke.size/2,
+                y: minY - stroke.size/2,
                 width: maxX - minX + stroke.size,
                 height: maxY - minY + stroke.size
-             };
-             if (overlaps(strokeBox)) allIds.push(stroke.id);
+             })) allIds.push(stroke.id);
           });
 
-          // Check images
           images.forEach(img => {
-             const imgBox = { x: img.x, y: img.y, width: img.width, height: img.height };
-             if (overlaps(imgBox)) allIds.push(img.id);
+             if (overlaps({ x: img.x, y: img.y, width: img.width, height: img.height })) allIds.push(img.id);
           });
 
-          // Check texts
           texts.forEach(txt => {
              const w = txt.text.length * (txt.fontSize * 0.6);
              const h = txt.fontSize * 1.2;
-             const txtBox = { x: txt.x, y: txt.y, width: w, height: h };
-             if (overlaps(txtBox)) allIds.push(txt.id);
+             if (overlaps({ x: txt.x, y: txt.y, width: w, height: h })) allIds.push(txt.id);
           });
 
-          // Check shapes
           shapes.forEach(shape => {
-             const shapeBox = {
-                x: shape.x,
-                y: shape.y,
-                width: shape.width || 50,
-                height: shape.height || 50
-             };
-             if (overlaps(shapeBox)) allIds.push(shape.id);
+             if (overlaps({ x: shape.x, y: shape.y, width: shape.width || 50, height: shape.height || 50 })) allIds.push(shape.id);
           });
 
-          // Check latex, codes, notes
-          latex.forEach(l => {
-             const lBox = { x: l.x, y: l.y, width: 100, height: 40 };
-             if (overlaps(lBox)) allIds.push(l.id);
-          });
-
-          codes.forEach(c => {
-             const cBox = { x: c.x, y: c.y, width: c.width, height: c.height };
-             if (overlaps(cBox)) allIds.push(c.id);
-          });
-
-          notes.forEach(n => {
-             const nBox = { x: n.x, y: n.y, width: n.width, height: n.height };
-             if (overlaps(nBox)) allIds.push(n.id);
-          });
-
-          // Check codeblocks
-          codeblocks.forEach(cb => {
-             const cbBox = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-             if (overlaps(cbBox)) allIds.push(cb.id);
-          });
-
-          // Check d3visualizations
-          d3visualizations.forEach(v => {
-             const vBox = { x: v.x, y: v.y, width: v.width, height: v.height };
-             if (overlaps(vBox)) allIds.push(v.id);
+          [...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].forEach(obj => {
+             const w = 'width' in obj ? obj.width : 100;
+             const h = 'height' in obj ? obj.height : 40;
+             if (overlaps({ x: obj.x, y: obj.y, width: w, height: h })) allIds.push(obj.id);
           });
 
           const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-
           if (isModifier) {
-             const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
-             setSelectedIds(uniqueIds);
+             setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
           } else {
              setSelectedIds(allIds);
           }
        }
-       // else: just a click, keep existing selection
-
        setSelectionBox(null);
+       isSelecting.current = false;
     }
 
-    // Handle single-point strokes (dots) - when user clicks without moving
+    // Handle single-point strokes (dots)
     if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser')) {
        const lastStroke = strokes[strokes.length - 1];
-       if (lastStroke && lastStroke.points.length === 2) {
-          // Single point - duplicate it slightly to create a visible dot
-          const updatedStroke = {
-             ...lastStroke,
-             points: [lastStroke.points[0], lastStroke.points[1], lastStroke.points[0] + 0.1, lastStroke.points[1] + 0.1]
-          };
-          onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
+       if (lastStroke && lastStroke.points.length <= 4) {
+          let isEssentiallyAPoint = lastStroke.points.length === 2;
+          if (lastStroke.points.length === 4) {
+             const dx = lastStroke.points[2] - lastStroke.points[0];
+             const dy = lastStroke.points[3] - lastStroke.points[1];
+             isEssentiallyAPoint = Math.sqrt(dx*dx + dy*dy) < lastStroke.size * 0.3;
+          }
+          if (isEssentiallyAPoint) {
+             const x = lastStroke.points[0];
+             const y = lastStroke.points[1];
+             const updatedStroke = { ...lastStroke, points: [x, y, x + 0.1, y + 0.1] };
+             onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
+          }
        }
     }
 
@@ -1266,6 +1355,26 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 />
               );
            }
+           if (stroke.tool === 'pen') {
+              return (
+                 <Path
+                    key={stroke.id}
+                    id={stroke.id}
+                    name="stroke"
+                    data={getSmoothLinePath(stroke.points)}
+                    stroke={stroke.color}
+                    strokeWidth={stroke.size}
+                    lineCap="round"
+                    lineJoin="round"
+                    draggable={tool === 'select'}
+                    onDragStart={handleDragStart}
+                    onDragMove={handleDragMove}
+                    onDragEnd={handleDragEnd}
+                    globalCompositeOperation="source-over"
+                    hitStrokeWidth={20}
+                 />
+              );
+           }
            return (
              <Line
                key={stroke.id}
@@ -1354,8 +1463,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
            return null;
         })}
 
-
-        {/* Overlay per drag multi-selezione - segue il mouse */}
+        {/* Selection UI elements back in main layer */}
         {selectedIds.length > 0 && selectionOverlay && (
            <Rect
               name="selection-overlay"
@@ -1383,6 +1491,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               fill="rgba(0,0,255,0.1)"
               stroke="blue"
               strokeWidth={1}
+              listening={false}
            />
         )}
 

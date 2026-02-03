@@ -37,8 +37,8 @@ const initialState: AppState = {
 };
 
 const DEFAULT_SIZES: Record<ToolType, number> = {
-   'pen': 5,
-   'smooth-pen': 5,
+   'pen': 1,
+   'smooth-pen': 3,
    'highlighter': 20,
    'eraser': 20,
    'laser': 10,
@@ -521,14 +521,25 @@ svg.append('path')
           return;
         }
 
-        // Shortcuts Overlay Toggle
-        if (e.key === '?') {
-          e.preventDefault();
-          setShowShortcuts(prev => !prev);
-          return;
-        }
+         // Shortcuts Overlay Toggle
+         if (e.key === '?') {
+           e.preventDefault();
+           setShowShortcuts(prev => !prev);
+           return;
+         }
 
-        // Tool Hotkeys - prevent tool switching during spacebar pan
+         // Clear laser strokes immediately
+         if (e.key === 'Escape') {
+            const hasLaser = state.strokes.some(s => s.tool === 'laser');
+            if (hasLaser) {
+               e.preventDefault();
+               const nonLaserStrokes = state.strokes.filter(s => s.tool !== 'laser');
+               handleUpdate({ strokes: nonLaserStrokes }, true);
+            }
+            return;
+         }
+
+         // Tool Hotkeys - prevent tool switching during spacebar pan
         if (isSpacebarPressed) return;
 
         // Number keys for primary tools

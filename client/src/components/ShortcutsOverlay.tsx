@@ -16,7 +16,7 @@ export const ShortcutsOverlay: React.FC<ShortcutsOverlayProps> = ({ onClose }) =
       { key: '1', desc: 'Select tool' },
       { key: '2', desc: 'Pen tool' },
       { key: '3', desc: 'Highlighter tool' },
-      { key: '4', desc: 'Laser pointer' },
+       { key: '4', desc: 'Laser pointer (15s, Esc to clear)' },
       { key: '5', desc: 'Spotlight pointer' },
       { key: 'E', desc: 'Eraser tool' },
       { key: 'H', desc: 'Hand/Pan tool' },
@@ -26,17 +26,18 @@ export const ShortcutsOverlay: React.FC<ShortcutsOverlayProps> = ({ onClose }) =
       { key: 'Space', desc: 'Temporary pan (hold)' },
       { key: 'Scroll', desc: 'Zoom in/out' },
     ]},
-    { category: 'Editing', items: [
-      { key: 'Ctrl+Z', desc: 'Undo' },
-      { key: 'Ctrl+Shift+Z', desc: 'Redo' },
-      { key: 'Ctrl+Y', desc: 'Redo' },
-      { key: 'Ctrl+C', desc: 'Copy selection' },
-      { key: 'Ctrl+X', desc: 'Cut selection' },
-      { key: 'Ctrl+V', desc: 'Paste' },
-      { key: 'Ctrl+A', desc: 'Select all' },
-      { key: 'Delete', desc: 'Delete selection' },
-      { key: 'Backspace', desc: 'Delete selection' },
-    ]},
+     { category: 'Editing', items: [
+       { key: 'Ctrl+Z', desc: 'Undo' },
+       { key: 'Ctrl+Shift+Z', desc: 'Redo' },
+       { key: 'Ctrl+Y', desc: 'Redo' },
+       { key: 'Ctrl+C', desc: 'Copy selection' },
+       { key: 'Ctrl+X', desc: 'Cut selection' },
+       { key: 'Ctrl+V', desc: 'Paste' },
+       { key: 'Ctrl+A', desc: 'Select all' },
+       { key: 'Delete', desc: 'Delete selection' },
+       { key: 'Backspace', desc: 'Delete selection' },
+       { key: 'Esc', desc: 'Clear laser strokes' },
+     ]},
   ];
 
   return (

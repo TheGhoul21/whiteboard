@@ -105,6 +105,89 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const [selectionOverlay, setSelectionOverlay] = useState<{x: number, y: number, width: number, height: number} | null>(null);
 
+  // Helper function to detect if a stroke is a rough square/rectangle
+  const detectSquareShape = (points: number[]): { isSquare: boolean, bounds?: { x: number, y: number, width: number, height: number } } => {
+    if (points.length < 10) return { isSquare: false }; // Need at least 5 points (10 coordinates)
+
+    // Check if stroke is closed (start and end points are close)
+    const startX = points[0];
+    const startY = points[1];
+    const endX = points[points.length - 2];
+    const endY = points[points.length - 1];
+    const closingDistance = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+
+    // Get bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const diagonal = Math.sqrt(width ** 2 + height ** 2);
+
+    // Must be closed (end near start, within 15% of diagonal)
+    if (closingDistance > diagonal * 0.15) return { isSquare: false };
+
+    // Define corners
+    const corners = [
+      { x: minX, y: minY }, // top-left
+      { x: maxX, y: minY }, // top-right
+      { x: maxX, y: maxY }, // bottom-right
+      { x: minX, y: maxY }  // bottom-left
+    ];
+
+    // Count points near each corner (within 20% of diagonal)
+    const cornerThreshold = diagonal * 0.20;
+    const cornerHits = corners.map(corner => {
+      let count = 0;
+      for (let i = 0; i < points.length; i += 2) {
+        const dist = Math.sqrt((points[i] - corner.x) ** 2 + (points[i + 1] - corner.y) ** 2);
+        if (dist < cornerThreshold) count++;
+      }
+      return count;
+    });
+
+    // All 4 corners should have at least 1 point nearby
+    const hasAllCorners = cornerHits.every(count => count > 0);
+
+    // Calculate how much of the stroke follows the perimeter
+    let perimeterPoints = 0;
+    const edgeThreshold = Math.min(width, height) * 0.15; // 15% of smaller dimension
+
+    for (let i = 0; i < points.length; i += 2) {
+      const x = points[i];
+      const y = points[i + 1];
+
+      // Check if point is near any edge
+      const nearLeft = Math.abs(x - minX) < edgeThreshold;
+      const nearRight = Math.abs(x - maxX) < edgeThreshold;
+      const nearTop = Math.abs(y - minY) < edgeThreshold;
+      const nearBottom = Math.abs(y - maxY) < edgeThreshold;
+
+      if ((nearLeft || nearRight) || (nearTop || nearBottom)) {
+        perimeterPoints++;
+      }
+    }
+
+    const perimeterRatio = perimeterPoints / (points.length / 2);
+
+    // It's a square if:
+    // 1. Stroke is closed
+    // 2. All 4 corners are touched
+    // 3. At least 70% of points are near the perimeter
+    // 4. Width and height are at least 20px (not too small)
+    const isSquare = hasAllCorners && perimeterRatio > 0.7 && width > 20 && height > 20;
+
+    return {
+      isSquare,
+      bounds: isSquare ? { x: minX, y: minY, width, height } : undefined
+    };
+  };
+
   const getCursorForTool = (tool: ToolType): string => {
     switch (tool) {
       case 'select':
@@ -708,18 +791,27 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const lastStroke = strokes[strokes.length - 1];
       if (!lastStroke) return;
 
-      // For small writing, we need MORE points, not fewer - only skip extremely close duplicates
-      // Use 2 for pen to balance detail with the new bezier smoothing
-      const minDistance = tool === 'pen' ? 2 : 0.5;
       const points = lastStroke.points;
-      if (points.length >= 2) {
-        const lastX = points[points.length - 2];
-        const lastY = points[points.length - 1];
-        const dist = Math.sqrt((pos.x - lastX) ** 2 + (pos.y - lastY) ** 2);
-        if (dist < minDistance) return;
-      }
+      let newPoints: number[];
 
-      const newPoints = lastStroke.points.concat([pos.x, pos.y]);
+      // If Shift is held, draw a straight line from start to current position
+      if (e.evt.shiftKey && points.length >= 2) {
+        const startX = points[0];
+        const startY = points[1];
+        newPoints = [startX, startY, pos.x, pos.y];
+      } else {
+        // Normal drawing - add points progressively
+        // For small writing, we need MORE points, not fewer - only skip extremely close duplicates
+        // Use 2 for pen to balance detail with the new bezier smoothing
+        const minDistance = tool === 'pen' ? 2 : 0.5;
+        if (points.length >= 2) {
+          const lastX = points[points.length - 2];
+          const lastY = points[points.length - 1];
+          const dist = Math.sqrt((pos.x - lastX) ** 2 + (pos.y - lastY) ** 2);
+          if (dist < minDistance) return;
+        }
+        newPoints = lastStroke.points.concat([pos.x, pos.y]);
+      }
 
       const newStrokes = [...strokes];
       newStrokes[newStrokes.length - 1] = { ...lastStroke, points: newPoints };
@@ -827,6 +919,32 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
              const y = lastStroke.points[1];
              const updatedStroke = { ...lastStroke, points: [x, y, x + 0.1, y + 0.1] };
              onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
+          }
+       }
+    }
+
+    // Auto-detect and convert rough squares to perfect rectangles
+    if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen')) {
+       const lastStroke = strokes[strokes.length - 1];
+       if (lastStroke && lastStroke.points.length > 10) {
+          const detection = detectSquareShape(lastStroke.points);
+          if (detection.isSquare && detection.bounds) {
+             // Remove the stroke and create a perfect rectangle shape
+             const newShape: ShapeObj = {
+                id: Date.now().toString(),
+                type: 'rect',
+                x: detection.bounds.x,
+                y: detection.bounds.y,
+                width: detection.bounds.width,
+                height: detection.bounds.height,
+                points: [0, 0, 0, 0],
+                color: lastStroke.color,
+                strokeWidth: lastStroke.size
+             };
+             onUpdate({
+                strokes: strokes.slice(0, -1), // Remove the rough stroke
+                shapes: [...shapes, newShape]   // Add perfect rectangle
+             }, true);
           }
        }
     }

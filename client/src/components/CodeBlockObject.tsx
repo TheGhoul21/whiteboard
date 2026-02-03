@@ -34,6 +34,9 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeStartY, setResizeStartY] = useState(0);
+  const [resizeStartHeight, setResizeStartHeight] = useState(0);
   const editorRef = useRef<HTMLDivElement>(null);
   const isSelectMode = tool === 'select';
   const editorViewRef = useRef<EditorView | null>(null);
@@ -266,6 +269,35 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
     // For now, require manual "Run" click to avoid state corruption
   };
 
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStartY(e.clientY);
+    setResizeStartHeight(obj.height || 400);
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaY = e.clientY - resizeStartY;
+      const newHeight = Math.max(minHeight, resizeStartHeight + deltaY);
+      onUpdate({ height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, resizeStartY, resizeStartHeight]);
+
   const isFolded = obj.isFolded;
   const foldedHeight = 45; // Just the toolbar
   const minHeight = 200; // Minimum height when unfolded
@@ -473,8 +505,11 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                     backgroundColor: '#f9fafb',
                     borderTop: '1px solid #d1d5db',
                     pointerEvents: 'auto', // Controls can capture events
-                    flex: '0 0 auto', // Controls area doesn't shrink
-                    overflow: 'auto' // Allow scrolling if controls overflow
+                    flex: '1 1 auto', // Allow controls to grow and shrink
+                    minHeight: '80px',
+                    maxHeight: '200px', // Limit max height
+                    overflowY: 'auto', // Enable vertical scrolling
+                    overflowX: 'hidden' // Prevent horizontal scroll
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -490,6 +525,40 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Resize handle at bottom */}
+          {!obj.isFolded && isSelectMode && (
+            <div
+              onMouseDown={handleResizeStart}
+              style={{
+                width: '100%',
+                height: '8px',
+                cursor: 'ns-resize',
+                backgroundColor: isResizing ? '#3b82f6' : 'transparent',
+                borderTop: '1px solid #d1d5db',
+                transition: 'background-color 0.15s',
+                pointerEvents: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#e5e7eb';
+              }}
+              onMouseLeave={(e) => {
+                if (!isResizing) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }
+              }}
+            >
+              <div style={{
+                width: '30px',
+                height: '3px',
+                borderRadius: '2px',
+                backgroundColor: '#9ca3af'
+              }} />
             </div>
           )}
         </div>

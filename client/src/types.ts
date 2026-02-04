@@ -15,6 +15,7 @@ export interface Stroke {
   size: number;
   opacity?: number;
   createdAt?: number;
+  zIndex?: number;
 }
 
 export interface ImageObj {
@@ -26,6 +27,7 @@ export interface ImageObj {
   width: number;
   height: number;
   rotation?: number;
+  zIndex?: number;
 }
 
 export interface TextObj {
@@ -36,6 +38,7 @@ export interface TextObj {
   y: number;
   fontSize: number;
   color: string;
+  zIndex?: number;
 }
 
 export interface ShapeObj {
@@ -43,11 +46,12 @@ export interface ShapeObj {
   type: 'rect' | 'circle' | 'arrow';
   x: number;
   y: number;
-  width?: number; 
-  height?: number; 
-  points?: number[]; 
+  width?: number;
+  height?: number;
+  points?: number[];
   color: string;
   strokeWidth: number;
+  zIndex?: number;
 }
 
 export interface LatexObj {
@@ -58,6 +62,7 @@ export interface LatexObj {
   y: number;
   fontSize: number;
   color: string;
+  zIndex?: number;
 }
 
 export interface CodeObj {
@@ -70,6 +75,7 @@ export interface CodeObj {
   width: number;
   height: number;
   fontSize: number;
+  zIndex?: number;
 }
 
 export interface NoteObj {
@@ -80,18 +86,25 @@ export interface NoteObj {
   y: number;
   width: number;
   height: number;
-  color: string; 
+  color: string;
+  zIndex?: number;
 }
 
 // CodeBlock with controls
 export interface CodeBlockControl {
   id: string;
-  type: 'slider' | 'number' | 'text' | 'checkbox';
+  type: 'slider' | 'number' | 'text' | 'checkbox' |
+        'radio' | 'color' | 'select' | 'range' | 'button' | 'toggle';
   label: string;
   value: any;
   min?: number;
   max?: number;
   step?: number;
+  options?: string[];        // For radio, select
+  minValue?: number;         // For range (lower bound)
+  maxValue?: number;         // For range (upper bound)
+  clickCount?: number;       // For button
+  lastClicked?: number;      // For button timestamp
 }
 
 export interface CodeBlockObj {
@@ -120,6 +133,15 @@ export interface CodeBlockObj {
 
   // Whether to append new viz or replace old one
   appendMode?: boolean;
+
+  zIndex?: number;
+  executionTrigger?: number;  // Timestamp to trigger execution from visualization
+
+  // Execution context for running with custom control values (for updating specific visualizations)
+  executionContext?: {
+    vizId: string;  // Target visualization to update
+    controlValues: Record<string, any>;  // Control values to use for this execution
+  };
 }
 
 // D3 Visualization output (separate object)
@@ -136,6 +158,13 @@ export interface D3VisualizationObj {
 
   // Reference to source CodeBlock
   sourceCodeBlockId: string;
+
+  zIndex?: number;
+  showControls?: boolean;  // Whether to display attached controls
+
+  // Snapshot of control values when this visualization was created
+  // Each visualization has its own independent control values
+  controlValues?: Record<string, any>;
 }
 
 // Bookmarks / Frames
@@ -145,4 +174,21 @@ export interface FrameObj {
    x: number;
    y: number;
    scale: number; // Zoom level to restore
+}
+
+// Animation System
+export interface Keyframe {
+  id: string;
+  time: number;  // Time in seconds from animation start
+  controlValues: Record<string, any>;  // Snapshot of all control values
+  label?: string;  // Optional label for this keyframe
+}
+
+export interface Animation {
+  id: string;
+  codeBlockId: string;
+  keyframes: Keyframe[];
+  duration: number;  // Total duration in seconds
+  fps: number;  // Frames per second for playback
+  loop?: boolean;  // Whether to loop the animation
 }

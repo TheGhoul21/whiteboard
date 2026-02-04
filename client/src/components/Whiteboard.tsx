@@ -694,6 +694,29 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (tool === 'text') {
        const text = prompt("Enter text:");
        if (text) {
+          // Calculate max z-index considering default z-indexes during rendering
+          const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
+            if (obj.zIndex !== undefined) return obj.zIndex;
+            const baseZIndexes: Record<string, number> = {
+              'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
+              'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
+            };
+            return (baseZIndexes[type] || 0) + index;
+          };
+
+          const maxZ = Math.max(
+            ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
+            ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
+            ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
+            ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
+            ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
+            ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
+            ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
+            ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
+            ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
+            0
+          );
+
           const newText: TextObj = {
              id: Date.now().toString(),
              type: 'text',
@@ -701,7 +724,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
              y: pos.y,
              text: text,
              fontSize: size * 5,
-             color: color
+             color: color,
+             zIndex: maxZ + 1  // Place new text on top
           };
           onUpdate({ texts: [...texts, newText] });
           setTool('select');
@@ -711,6 +735,29 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     }
 
     if (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'laser') {
+      // Calculate max z-index considering default z-indexes during rendering
+      const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
+        if (obj.zIndex !== undefined) return obj.zIndex;
+        const baseZIndexes: Record<string, number> = {
+          'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
+          'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
+        };
+        return (baseZIndexes[type] || 0) + index;
+      };
+
+      const maxZ = Math.max(
+        ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
+        ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
+        ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
+        ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
+        ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
+        ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
+        ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
+        ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
+        ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
+        0
+      );
+
       const newStroke: Stroke = {
         id: Date.now().toString(),
         tool: tool,
@@ -718,12 +765,36 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         size: size,
         opacity: tool === 'highlighter' ? 0.3 : 1,
         points: [pos.x, pos.y],
-        createdAt: tool === 'laser' ? Date.now() : undefined
+        createdAt: tool === 'laser' ? Date.now() : undefined,
+        zIndex: maxZ + 1  // Place new stroke on top
       };
       onUpdate({ strokes: [...strokes, newStroke] });
     }
     
     if (tool === 'rect' || tool === 'circle' || tool === 'arrow') {
+       // Calculate max z-index considering default z-indexes during rendering
+       const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
+         if (obj.zIndex !== undefined) return obj.zIndex;
+         const baseZIndexes: Record<string, number> = {
+           'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
+           'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
+         };
+         return (baseZIndexes[type] || 0) + index;
+       };
+
+       const maxZ = Math.max(
+         ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
+         ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
+         ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
+         ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
+         ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
+         ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
+         ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
+         ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
+         ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
+         0
+       );
+
        const newShape: ShapeObj = {
           id: Date.now().toString(),
           type: tool,
@@ -733,7 +804,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           height: 0,
           points: [0, 0, 0, 0],
           color: color,
-          strokeWidth: size
+          strokeWidth: size,
+          zIndex: maxZ + 1  // Place new shape on top
        };
        onUpdate({ shapes: [...shapes, newShape] });
     }
@@ -1234,6 +1306,454 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
      }
   };
 
+  // Helper to get default z-index for object type
+  const getDefaultZIndex = (type: string, index: number): number => {
+    const baseZIndexes: Record<string, number> = {
+      'stroke': 0,
+      'image': 1000,
+      'text': 2000,
+      'shape': 3000,
+      'latex': 4000,
+      'code': 5000,
+      'note': 6000,
+      'codeblock': 7000,
+      'd3viz': 8000
+    };
+    return (baseZIndexes[type] || 0) + index;
+  };
+
+  // Create sorted array of all renderable objects with z-index
+  interface RenderableObject {
+    id: string;
+    zIndex: number;
+    type: string;
+    data: any;
+  }
+
+  const renderableObjects: RenderableObject[] = [
+    ...strokes.map((s, i) => ({
+      id: s.id,
+      zIndex: s.zIndex ?? getDefaultZIndex('stroke', i),
+      type: 'stroke',
+      data: s
+    })),
+    ...images.map((img, i) => ({
+      id: img.id,
+      zIndex: img.zIndex ?? getDefaultZIndex('image', i),
+      type: 'image',
+      data: img
+    })),
+    ...texts.map((txt, i) => ({
+      id: txt.id,
+      zIndex: txt.zIndex ?? getDefaultZIndex('text', i),
+      type: 'text',
+      data: txt
+    })),
+    ...shapes.map((shp, i) => ({
+      id: shp.id,
+      zIndex: shp.zIndex ?? getDefaultZIndex('shape', i),
+      type: 'shape',
+      data: shp
+    })),
+    ...latex.map((l, i) => ({
+      id: l.id,
+      zIndex: l.zIndex ?? getDefaultZIndex('latex', i),
+      type: 'latex',
+      data: l
+    })),
+    ...codes.map((c, i) => ({
+      id: c.id,
+      zIndex: c.zIndex ?? getDefaultZIndex('code', i),
+      type: 'code',
+      data: c
+    })),
+    ...notes.map((n, i) => ({
+      id: n.id,
+      zIndex: n.zIndex ?? getDefaultZIndex('note', i),
+      type: 'note',
+      data: n
+    })),
+    ...codeblocks.map((cb, i) => ({
+      id: cb.id,
+      zIndex: cb.zIndex ?? getDefaultZIndex('codeblock', i),
+      type: 'codeblock',
+      data: cb
+    })),
+    ...d3visualizations.map((viz, i) => ({
+      id: viz.id,
+      zIndex: viz.zIndex ?? getDefaultZIndex('d3viz', i),
+      type: 'd3viz',
+      data: viz
+    }))
+  ];
+
+  // Sort by z-index
+  renderableObjects.sort((a, b) => a.zIndex - b.zIndex);
+
+  // Render helper function
+  const renderObject = (obj: RenderableObject): JSX.Element | null => {
+    const { type, data } = obj;
+
+    if (type === 'stroke') {
+      const stroke = data as Stroke;
+      if (stroke.tool === 'laser') {
+        const age = Date.now() - (stroke.createdAt || 0);
+        const opacity = Math.max(0, 1 - age / 1000);
+        if (opacity <= 0) return null;
+        const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size * 2, 0.1);
+        return (
+          <Path
+            key={stroke.id}
+            id={stroke.id}
+            data={pathData}
+            fill={stroke.color}
+            opacity={opacity}
+            listening={false}
+          />
+        );
+      }
+      if (stroke.tool === 'smooth-pen') {
+        const pathData = getCalligraphyPath(flatToPoints(stroke.points), stroke.size);
+        return (
+          <Path
+            key={stroke.id}
+            id={stroke.id}
+            name="stroke"
+            data={pathData}
+            fill={stroke.color}
+            draggable={tool === 'select'}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            globalCompositeOperation="source-over"
+            hitStrokeWidth={20}
+            listening={true}
+            shadowColor="rgba(0,0,0,0.15)"
+            shadowBlur={1}
+            shadowOffset={{ x: 0.5, y: 0.5 }}
+            shadowOpacity={0.3}
+          />
+        );
+      }
+      if (stroke.tool === 'highlighter') {
+        return (
+          <Line
+            key={stroke.id}
+            id={stroke.id}
+            name="stroke"
+            points={stroke.points}
+            stroke={stroke.color}
+            strokeWidth={stroke.size}
+            opacity={stroke.opacity || 0.3}
+            tension={0.5}
+            lineCap="round"
+            lineJoin="round"
+            draggable={tool === 'select'}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            globalCompositeOperation="source-over"
+            hitStrokeWidth={20}
+          />
+        );
+      }
+      if (stroke.tool === 'pen') {
+        return (
+          <Path
+            key={stroke.id}
+            id={stroke.id}
+            name="stroke"
+            data={getSmoothLinePath(stroke.points)}
+            stroke={stroke.color}
+            strokeWidth={stroke.size}
+            lineCap="round"
+            lineJoin="round"
+            draggable={tool === 'select'}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            globalCompositeOperation="source-over"
+            hitStrokeWidth={20}
+          />
+        );
+      }
+      return (
+        <Line
+          key={stroke.id}
+          id={stroke.id}
+          name="stroke"
+          points={stroke.points}
+          stroke={stroke.color}
+          strokeWidth={stroke.size}
+          tension={0.5}
+          lineCap="round"
+          lineJoin="round"
+          draggable={tool === 'select'}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+          globalCompositeOperation={
+            stroke.tool === 'eraser' ? 'destination-out' : 'source-over'
+          }
+          hitStrokeWidth={20}
+        />
+      );
+    }
+
+    if (type === 'image') {
+      const img = data as ImageObj;
+      return (
+        <KonvaImage
+          key={img.id}
+          id={img.id}
+          name="image"
+          image={(() => {
+            const i = new window.Image();
+            i.src = img.src;
+            return i;
+          })()}
+          x={img.x}
+          y={img.y}
+          width={img.width}
+          height={img.height}
+          rotation={img.rotation}
+          draggable={tool === 'select' && !selectedIds.includes(img.id)}
+          onDragEnd={handleDragEnd}
+          onTransformEnd={handleTransformEnd}
+        />
+      );
+    }
+
+    if (type === 'text') {
+      const txt = data as TextObj;
+      return (
+        <Text
+          key={txt.id}
+          id={txt.id}
+          name="text"
+          x={txt.x}
+          y={txt.y}
+          text={txt.text}
+          fontSize={txt.fontSize}
+          fill={txt.color}
+          draggable={tool === 'select' && !selectedIds.includes(txt.id)}
+          onDragEnd={handleDragEnd}
+          onTransformEnd={handleTransformEnd}
+        />
+      );
+    }
+
+    if (type === 'shape') {
+      const shp = data as ShapeObj;
+      if (shp.type === 'rect') {
+        return (
+          <Rect
+            key={shp.id}
+            id={shp.id}
+            name="shape"
+            x={shp.x}
+            y={shp.y}
+            width={shp.width}
+            height={shp.height}
+            stroke={shp.color}
+            strokeWidth={shp.strokeWidth}
+            draggable={tool === 'select' && !selectedIds.includes(shp.id)}
+            onDragEnd={handleDragEnd}
+            onTransformEnd={handleTransformEnd}
+          />
+        );
+      } else if (shp.type === 'circle') {
+        return (
+          <Circle
+            key={shp.id}
+            id={shp.id}
+            name="shape"
+            x={shp.x}
+            y={shp.y}
+            radius={Math.abs((shp.width || 10) / 2)}
+            stroke={shp.color}
+            strokeWidth={shp.strokeWidth}
+            draggable={tool === 'select' && !selectedIds.includes(shp.id)}
+            onDragEnd={handleDragEnd}
+            onTransformEnd={handleTransformEnd}
+          />
+        );
+      } else if (shp.type === 'arrow') {
+        return (
+          <Arrow
+            key={shp.id}
+            id={shp.id}
+            name="shape"
+            x={shp.x}
+            y={shp.y}
+            points={shp.points || []}
+            stroke={shp.color}
+            strokeWidth={shp.strokeWidth}
+            fill={shp.color}
+            draggable={tool === 'select' && !selectedIds.includes(shp.id)}
+            onDragEnd={handleDragEnd}
+            onTransformEnd={handleTransformEnd}
+          />
+        );
+      }
+      return null;
+    }
+
+    if (type === 'latex') {
+      const l = data as LatexObj;
+      return (
+        <LatexObject
+          key={l.id}
+          obj={l}
+          isSelected={selectedIds.includes(l.id)}
+          onSelect={(e) => handleSmartObjectSelect(e, l.id)}
+        />
+      );
+    }
+
+    if (type === 'code') {
+      const c = data as CodeObj;
+      return (
+        <CodeObject
+          key={c.id}
+          obj={c}
+          isSelected={selectedIds.includes(c.id)}
+          onSelect={(e) => handleSmartObjectSelect(e, c.id)}
+          onChangeLanguage={(lang) => {
+            const newCodes = codes.map(code => code.id === c.id ? { ...code, language: lang } : code);
+            onUpdate({ codes: newCodes });
+          }}
+          onChangeText={(text) => {
+            const newCodes = codes.map(code => code.id === c.id ? { ...code, text } : code);
+            onUpdate({ codes: newCodes });
+          }}
+        />
+      );
+    }
+
+    if (type === 'note') {
+      const n = data as NoteObj;
+      return (
+        <NoteObject
+          key={n.id}
+          obj={n}
+          isSelected={selectedIds.includes(n.id)}
+          onSelect={(e) => handleSmartObjectSelect(e, n.id)}
+          onChangeText={(text) => {
+            const newNotes = notes.map(note => note.id === n.id ? { ...note, text } : note);
+            onUpdate({ notes: newNotes });
+          }}
+        />
+      );
+    }
+
+    if (type === 'codeblock') {
+      const cb = data as CodeBlockObj;
+      return (
+        <CodeBlockObject
+          key={cb.id}
+          obj={cb}
+          isSelected={selectedIds.includes(cb.id)}
+          onSelect={(e) => handleSmartObjectSelect(e, cb.id)}
+          draggable={tool === 'select' && !isPanning.current}
+          tool={tool}
+          onUpdate={(updates) => {
+            console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === cb.id ? { ...block, ...updates } : block
+            );
+            console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
+            onUpdate({
+              codeblocks: newCodeBlocks
+            });
+          }}
+          onCreateVisualization={(viz, codeBlockUpdates) => {
+            console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === cb.id
+                ? { ...block, outputId: viz.id, ...codeBlockUpdates }
+                : block
+            );
+            onUpdate({
+              codeblocks: newCodeBlocks,
+              d3visualizations: [...d3visualizations, viz]
+            });
+          }}
+          onUpdateVisualization={(updates) => {
+            console.log('[Whiteboard] onUpdateVisualization called for:', updates.id);
+            const newVizs = d3visualizations.map(v => v.id === updates.id ? { ...v, ...updates } : v);
+            console.log('[Whiteboard] Updating with d3visualizations count:', newVizs.length);
+            onUpdate({ d3visualizations: newVizs });
+          }}
+        />
+      );
+    }
+
+    if (type === 'd3viz') {
+      const viz = data as D3VisualizationObj;
+      const sourceCodeBlock = codeblocks.find(cb => cb.id === viz.sourceCodeBlockId);
+      const sourceCodeBlockSelected = viz.sourceCodeBlockId
+        ? selectedIds.includes(viz.sourceCodeBlockId)
+        : false;
+      return (
+        <D3VisualizationObject
+          key={viz.id}
+          obj={viz}
+          isSelected={selectedIds.includes(viz.id)}
+          sourceCodeBlockSelected={sourceCodeBlockSelected}
+          onSelect={(e) => handleSmartObjectSelect(e, viz.id)}
+          draggable={tool === 'select' && !isPanning.current}
+          tool={tool}
+          sourceCodeBlock={sourceCodeBlock}
+          onUpdateControl={(controlLabel, value) => {
+            // Update only this visualization's control values
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id
+                ? {
+                    ...v,
+                    controlValues: {
+                      ...v.controlValues,
+                      [controlLabel]: value
+                    }
+                  }
+                : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+          onRefresh={() => {
+            if (!sourceCodeBlock) return;
+
+            // Execute with this visualization's control values WITHOUT modifying code block controls
+            const vizControlValues = viz.controlValues || {};
+
+            // Set execution context to update only this specific visualization
+            const updatedCodeBlock = {
+              ...sourceCodeBlock,
+              executionContext: {
+                vizId: viz.id,
+                controlValues: vizControlValues
+              },
+              executionTrigger: Date.now()
+            };
+
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === sourceCodeBlock.id ? updatedCodeBlock : block
+            );
+
+            onUpdate({ codeblocks: newCodeBlocks });
+          }}
+          onToggleControls={() => {
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id ? { ...v, showControls: !v.showControls } : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+        />
+      );
+    }
+
+    return null;
+  };
 
   return (
     <Stage
@@ -1300,294 +1820,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       </Layer>
 
       <Layer>
-        {latex.map(l => (
-           <LatexObject 
-              key={l.id} 
-              obj={l} 
-              isSelected={selectedIds.includes(l.id)}
-              onSelect={(e) => handleSmartObjectSelect(e, l.id)} 
-           />
-        ))}
-        {codes.map(c => (
-           <CodeObject 
-              key={c.id} 
-              obj={c} 
-              isSelected={selectedIds.includes(c.id)}
-              onSelect={(e) => handleSmartObjectSelect(e, c.id)} 
-              onChangeLanguage={(lang) => {
-                 const newCodes = codes.map(code => code.id === c.id ? { ...code, language: lang } : code);
-                 onUpdate({ codes: newCodes });
-              }}
-              onChangeText={(text) => {
-                 const newCodes = codes.map(code => code.id === c.id ? { ...code, text } : code);
-                 onUpdate({ codes: newCodes });
-              }}
-           />
-        ))}
-        {notes.map(n => (
-           <NoteObject
-              key={n.id}
-              obj={n}
-              isSelected={selectedIds.includes(n.id)}
-              onSelect={(e) => handleSmartObjectSelect(e, n.id)}
-              onChangeText={(text) => {
-                 const newNotes = notes.map(note => note.id === n.id ? { ...note, text } : note);
-                 onUpdate({ notes: newNotes });
-              }}
-           />
-        ))}
-
-         {codeblocks.map(cb => (
-            <CodeBlockObject
-               key={cb.id}
-               obj={cb}
-               isSelected={selectedIds.includes(cb.id)}
-               onSelect={(e) => handleSmartObjectSelect(e, cb.id)}
-               draggable={tool === 'select' && !isPanning.current}
-               tool={tool}
-               onUpdate={(updates) => {
-                  console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
-                  // Use functional form to avoid stale closure issues
-                  // Only update the specific codeblock, don't touch other arrays
-                  const newCodeBlocks = codeblocks.map(block =>
-                    block.id === cb.id ? { ...block, ...updates } : block
-                  );
-                  console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
-                  onUpdate({
-                    codeblocks: newCodeBlocks
-                  });
-               }}
-               onCreateVisualization={(viz, codeBlockUpdates) => {
-                  console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
-                  // Single atomic update: new viz + updated codeblock
-                  const newCodeBlocks = codeblocks.map(block =>
-                    block.id === cb.id
-                      ? { ...block, outputId: viz.id, ...codeBlockUpdates }
-                      : block
-                  );
-                  onUpdate({
-                    codeblocks: newCodeBlocks,
-                    d3visualizations: [...d3visualizations, viz]
-                  });
-               }}
-               onUpdateVisualization={(updates) => {
-                  console.log('[Whiteboard] onUpdateVisualization called for:', updates.id);
-                  const newVizs = d3visualizations.map(v => v.id === updates.id ? { ...v, ...updates } : v);
-                  console.log('[Whiteboard] Updating with d3visualizations count:', newVizs.length);
-                  onUpdate({ d3visualizations: newVizs });
-               }}
-            />
-         ))}
-
-         {d3visualizations.map(viz => {
-            // Check if the source code block is selected
-            const sourceCodeBlockSelected = viz.sourceCodeBlockId
-               ? selectedIds.includes(viz.sourceCodeBlockId)
-               : false;
-
-            return (
-               <D3VisualizationObject
-                  key={viz.id}
-                  obj={viz}
-                  isSelected={selectedIds.includes(viz.id)}
-                  sourceCodeBlockSelected={sourceCodeBlockSelected}
-                  onSelect={(e) => handleSmartObjectSelect(e, viz.id)}
-                  draggable={tool === 'select' && !isPanning.current}
-                  tool={tool}
-               />
-            );
-         })}
-
-        {images.map((img) => (
-          <KonvaImage
-            key={img.id}
-            id={img.id}
-            name="image"
-            image={(() => {
-               const i = new window.Image();
-               i.src = img.src;
-               return i;
-            })()}
-            x={img.x}
-            y={img.y}
-            width={img.width}
-            height={img.height}
-            rotation={img.rotation}
-            draggable={tool === 'select' && !selectedIds.includes(img.id)}
-            onDragEnd={handleDragEnd}
-            onTransformEnd={handleTransformEnd}
-          />
-        ))}
-
-        {strokes.map((stroke) => {
-           if (stroke.tool === 'laser') {
-              const age = Date.now() - (stroke.createdAt || 0);
-              const opacity = Math.max(0, 1 - age / 1000);
-              if (opacity <= 0) return null;
-              const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size * 2, 0.1);
-              return (
-                 <Path
-                    key={stroke.id}
-                    id={stroke.id}
-                    data={pathData}
-                    fill={stroke.color}
-                    opacity={opacity}
-                    listening={false}
-                 />
-              );
-           }
-           if (stroke.tool === 'smooth-pen') {
-              const pathData = getCalligraphyPath(flatToPoints(stroke.points), stroke.size);
-              return (
-                 <Path
-                    key={stroke.id}
-                    id={stroke.id}
-                    name="stroke"
-                    data={pathData}
-                    fill={stroke.color}
-                    draggable={tool === 'select'}
-                    onDragStart={handleDragStart}
-                    onDragMove={handleDragMove}
-                    onDragEnd={handleDragEnd}
-                    globalCompositeOperation="source-over"
-                    hitStrokeWidth={20}
-                    listening={true}
-                    shadowColor="rgba(0,0,0,0.15)"
-                    shadowBlur={1}
-                    shadowOffset={{ x: 0.5, y: 0.5 }}
-                    shadowOpacity={0.3}
-                 />
-              );
-           }
-           if (stroke.tool === 'highlighter') {
-              return (
-                <Line
-                  key={stroke.id}
-                  id={stroke.id}
-                  name="stroke"
-                  points={stroke.points}
-                  stroke={stroke.color}
-                  strokeWidth={stroke.size}
-                  opacity={stroke.opacity || 0.3}
-                  tension={0.5}
-                  lineCap="round"
-                  lineJoin="round"
-                  draggable={tool === 'select'}
-                  onDragStart={handleDragStart}
-                  onDragMove={handleDragMove}
-                  onDragEnd={handleDragEnd}
-                  globalCompositeOperation="source-over"
-                  hitStrokeWidth={20}
-                />
-              );
-           }
-           if (stroke.tool === 'pen') {
-              return (
-                 <Path
-                    key={stroke.id}
-                    id={stroke.id}
-                    name="stroke"
-                    data={getSmoothLinePath(stroke.points)}
-                    stroke={stroke.color}
-                    strokeWidth={stroke.size}
-                    lineCap="round"
-                    lineJoin="round"
-                    draggable={tool === 'select'}
-                    onDragStart={handleDragStart}
-                    onDragMove={handleDragMove}
-                    onDragEnd={handleDragEnd}
-                    globalCompositeOperation="source-over"
-                    hitStrokeWidth={20}
-                 />
-              );
-           }
-           return (
-             <Line
-               key={stroke.id}
-               id={stroke.id}
-               name="stroke"
-               points={stroke.points}
-               stroke={stroke.color}
-               strokeWidth={stroke.size}
-               tension={0.5}
-               lineCap="round"
-               lineJoin="round"
-               draggable={tool === 'select'}
-               onDragStart={handleDragStart}
-               onDragMove={handleDragMove}
-               onDragEnd={handleDragEnd}
-               globalCompositeOperation={
-                 stroke.tool === 'eraser' ? 'destination-out' : 'source-over'
-               }
-               hitStrokeWidth={20}
-             />
-           );
-        })}
-        
-        {texts.map((txt) => (
-           <Text
-              key={txt.id}
-              id={txt.id}
-              name="text"
-              x={txt.x}
-              y={txt.y}
-              text={txt.text}
-              fontSize={txt.fontSize}
-              fill={txt.color}
-              draggable={tool === 'select' && !selectedIds.includes(txt.id)}
-              onDragEnd={handleDragEnd}
-              onTransformEnd={handleTransformEnd}
-           />
-        ))}
-        
-        {shapes.map((shp) => {
-           if (shp.type === 'rect') {
-              return <Rect
-                 key={shp.id}
-                 id={shp.id}
-                 name="shape"
-                 x={shp.x}
-                 y={shp.y}
-                 width={shp.width}
-                 height={shp.height}
-                 stroke={shp.color}
-                 strokeWidth={shp.strokeWidth}
-                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
-                 onDragEnd={handleDragEnd}
-                 onTransformEnd={handleTransformEnd}
-              />;
-           } else if (shp.type === 'circle') {
-              return <Circle
-                 key={shp.id}
-                 id={shp.id}
-                 name="shape"
-                 x={shp.x}
-                 y={shp.y}
-                 radius={Math.abs((shp.width || 10) / 2)}
-                 stroke={shp.color}
-                 strokeWidth={shp.strokeWidth}
-                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
-                 onDragEnd={handleDragEnd}
-                 onTransformEnd={handleTransformEnd}
-              />;
-           } else if (shp.type === 'arrow') {
-              return <Arrow
-                 key={shp.id}
-                 id={shp.id}
-                 name="shape"
-                 x={shp.x}
-                 y={shp.y}
-                 points={shp.points || []}
-                 stroke={shp.color}
-                 strokeWidth={shp.strokeWidth}
-                 fill={shp.color}
-                 draggable={tool === 'select' && !selectedIds.includes(shp.id)}
-                 onDragEnd={handleDragEnd}
-                 onTransformEnd={handleTransformEnd}
-              />;
-           }
-           return null;
-        })}
+        {/* Render all objects sorted by z-index */}
+        {renderableObjects.map(renderObject)}
 
         {/* Selection UI elements back in main layer */}
         {selectedIds.length > 0 && selectionOverlay && (

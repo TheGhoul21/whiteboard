@@ -41,6 +41,13 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   const isSelectMode = tool === 'select';
   const editorViewRef = useRef<EditorView | null>(null);
 
+  // Watch for external execution triggers from visualization controls
+  useEffect(() => {
+    if (obj.executionTrigger && obj.executionTrigger > (obj.lastExecuted || 0)) {
+      executeCode();
+    }
+  }, [obj.executionTrigger]);
+
   // Initialize CodeMirror editor
   useEffect(() => {
     if (isEditing && editorRef.current && !editorViewRef.current) {
@@ -119,8 +126,16 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
         outputDiv.id = 'output';
 
         // 2. Setup sandbox with control values
+        // If executionContext is set, use those control values instead of obj.controls values
+        const sourceControlValues = obj.executionContext
+          ? obj.executionContext.controlValues
+          : obj.controls?.reduce((acc, c) => {
+              acc[c.label] = c.value;
+              return acc;
+            }, {} as Record<string, any>) || {};
+
         const controlValues = new Map(
-          obj.controls?.map(c => [c.label, c.value]) || []
+          Object.entries(sourceControlValues)
         );
 
         const controls: CodeBlockControl[] = [];
@@ -168,13 +183,91 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             return value;
           },
 
+          radio: (label: string, options: string[], initial: string) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'radio',
+              label,
+              value,
+              options
+            });
+            return value;
+          },
+
+          color: (label: string, initial: string) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'color',
+              label,
+              value
+            });
+            return value;
+          },
+
+          select: (label: string, options: string[], initial: string) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'select',
+              label,
+              value,
+              options
+            });
+            return value;
+          },
+
+          range: (label: string, min: number, max: number, initialMin: number, initialMax: number, step = 1) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : { min: initialMin, max: initialMax };
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'range',
+              label,
+              value,
+              min,
+              max,
+              step
+            });
+            return value;
+          },
+
+          button: (label: string) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : { clickCount: 0, lastClicked: null };
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'button',
+              label,
+              value
+            });
+            return value;
+          },
+
+          toggle: (label: string, initial: boolean) => {
+            const existing = controlValues.get(label);
+            const value = existing !== undefined ? existing : initial;
+            controls.push({
+              id: `${label}-${Date.now()}-${Math.random()}`,
+              type: 'toggle',
+              label,
+              value
+            });
+            return value;
+          },
+
           log: (msg: any) => console.log('[CodeBlock]', msg)
         };
 
         // 3. Execute user code
         console.log('[CodeBlock] Executing user code...');
         const userFunction = new Function(
-          'output', 'd3', 'slider', 'input', 'checkbox', 'log',
+          'output', 'd3', 'slider', 'input', 'checkbox',
+          'radio', 'color', 'select', 'range', 'button', 'toggle', 'log',
           obj.code
         );
 
@@ -184,6 +277,12 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
           sandbox.slider,
           sandbox.input,
           sandbox.checkbox,
+          sandbox.radio,
+          sandbox.color,
+          sandbox.select,
+          sandbox.range,
+          sandbox.button,
+          sandbox.toggle,
           sandbox.log
         );
 
@@ -192,7 +291,22 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
         console.log('[CodeBlock] Output generated, length:', outputContent.length);
 
         // 5. Create or update D3Visualization
-        if (obj.outputId && !obj.appendMode) {
+
+        // If executionContext is set, update specific visualization and don't modify controls
+        if (obj.executionContext) {
+          console.log('[CodeBlock] Updating specific visualization:', obj.executionContext.vizId);
+          onUpdateVisualization({
+            id: obj.executionContext.vizId,
+            content: outputContent
+          });
+
+          // Clear execution context and update state (without modifying controls)
+          onUpdate({
+            executionContext: undefined,
+            error: undefined,
+            lastExecuted: Date.now()
+          });
+        } else if (obj.outputId && !obj.appendMode) {
           console.log('[CodeBlock] Updating existing visualization:', obj.outputId);
           // Update existing visualization
           onUpdateVisualization({
@@ -218,6 +332,12 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             vizY = obj.y + 370; // Height + spacing
           }
 
+          // Capture current control values as a snapshot for this visualization
+          const capturedControlValues: Record<string, any> = {};
+          controls.forEach(c => {
+            capturedControlValues[c.label] = c.value;
+          });
+
           const newVizId = `viz-${Date.now()}`;
           const newViz: D3VisualizationObj = {
             id: newVizId,
@@ -227,7 +347,8 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             width: 450,
             height: 350,
             content: outputContent,
-            sourceCodeBlockId: obj.id
+            sourceCodeBlockId: obj.id,
+            controlValues: capturedControlValues
           };
 
           // Pass both the viz AND the codeblock updates together
@@ -366,18 +487,19 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 executeCode();
               }}
               disabled={isExecuting}
+              title={isExecuting ? 'Running...' : 'Run code'}
               style={{
-                padding: '4px 12px',
+                padding: '4px 10px',
                 backgroundColor: isExecuting ? '#9ca3af' : '#10b981',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
                 cursor: isExecuting ? 'not-allowed' : 'pointer',
-                fontSize: '13px',
+                fontSize: '14px',
                 fontWeight: '500'
               }}
             >
-              {isExecuting ? 'Running...' : 'Run'}
+              ▶
             </button>
 
             {/* Fold toggle */}
@@ -387,18 +509,19 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 const newIsFolded = !obj.isFolded;
                 if (newIsFolded) {
                   // Folding: save current height as unfoldedHeight
-                  onUpdate({ 
+                  onUpdate({
                     isFolded: true,
                     unfoldedHeight: obj.height || 400
                   });
                 } else {
                   // Unfolding: restore original height
-                  onUpdate({ 
+                  onUpdate({
                     isFolded: false,
                     height: obj.unfoldedHeight || obj.height || 400
                   });
                 }
               }}
+              title={obj.isFolded ? 'Expand' : 'Collapse'}
               style={{
                 padding: '4px 8px',
                 backgroundColor: '#e5e7eb',
@@ -406,10 +529,10 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontSize: '12px'
+                fontSize: '14px'
               }}
             >
-              {obj.isFolded ? '▶' : '▼'} Fold
+              {obj.isFolded ? '▶' : '▼'}
             </button>
 
             {/* Append mode toggle */}
@@ -418,6 +541,7 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 e.stopPropagation();
                 onUpdate({ appendMode: !obj.appendMode });
               }}
+              title={obj.appendMode ? 'Append mode: stack visualizations' : 'Replace mode: overwrite visualization'}
               style={{
                 padding: '4px 8px',
                 backgroundColor: obj.appendMode ? '#dbeafe' : '#e5e7eb',
@@ -425,26 +549,26 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 border: 'none',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontSize: '12px'
+                fontSize: '14px'
               }}
             >
-              {obj.appendMode ? '⊕ Append' : '↻ Replace'}
+              {obj.appendMode ? '⊕' : '↻'}
             </button>
 
             {obj.lastExecuted && !obj.error && (
-              <span style={{ fontSize: '12px', color: '#10b981' }}>
-                ✓ Executed
+              <span style={{ fontSize: '14px', color: '#10b981' }} title="Code executed successfully">
+                ✓
               </span>
             )}
 
             {obj.error && (
-              <span style={{ fontSize: '12px', color: '#ef4444' }}>
-                Error: {obj.error}
+              <span style={{ fontSize: '11px', color: '#ef4444' }} title={obj.error}>
+                ⚠ {obj.error.substring(0, 30)}{obj.error.length > 30 ? '...' : ''}
               </span>
             )}
 
-            <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#6b7280' }}>
-              {isEditing ? 'Editing (Cmd+Enter to run, Esc to exit)' : 'Double-click to edit'}
+            <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#9ca3af' }}>
+              {isEditing ? '⌨ Cmd+Enter to run, Esc to exit' : '✎'}
             </div>
           </div>
 
@@ -513,8 +637,8 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                   }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
-                    Controls
+                  <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: '#6b7280' }}>
+                    🎮
                   </div>
                   {obj.controls.map((control) => (
                     <ControlWidget

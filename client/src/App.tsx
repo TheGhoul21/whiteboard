@@ -5,7 +5,7 @@ import { FrameManager } from './components/FrameManager';
 import { Minimap } from './components/Minimap';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { ExportDialog, type ExportMode } from './components/ExportDialog';
-import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj, CodeBlockObj, D3VisualizationObj } from './types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj, CodeBlockObj, D3VisualizationObj, Animation } from './types';
 import Konva from 'konva';
 import jsPDF from 'jspdf';
 import useHistory from './hooks/useHistory';
@@ -21,6 +21,7 @@ interface AppState {
    frames: FrameObj[];
    codeblocks: CodeBlockObj[];
    d3visualizations: D3VisualizationObj[];
+   animations: Animation[];
 }
 
 const initialState: AppState = {
@@ -253,8 +254,8 @@ svg.append('path')
   .attr('stroke', 'red')
   .attr('stroke-width', 2)
   .attr('d', line);`,
-      x: (-viewPos.x + window.innerWidth / 2) / zoom - 250,
-      y: (-viewPos.y + window.innerHeight / 2) / zoom - 200,
+      x: (window.innerWidth / 2 - viewPos.x) / zoom - 250,
+      y: (window.innerHeight / 2 - viewPos.y) / zoom - 200,
       width: 500,
       height: 400,
       fontSize: 14,
@@ -408,6 +409,103 @@ svg.append('path')
      setTool('select');
   };
 
+  // Layer management functions
+  const handleBringToFront = () => {
+    if (selectedIds.length === 0 || !state) return;
+
+    // Find max z-index across all objects
+    const allObjects = [
+      ...state.strokes, ...state.images, ...state.texts, ...state.shapes,
+      ...state.latex, ...state.codes, ...state.notes,
+      ...state.codeblocks, ...state.d3visualizations
+    ];
+    const maxZ = Math.max(...allObjects.map(o => o.zIndex || 0), 0);
+
+    // Update selected objects to maxZ + 1
+    const updateZIndex = (obj: any) =>
+      selectedIds.includes(obj.id) ? { ...obj, zIndex: maxZ + 1 } : obj;
+
+    handleUpdate({
+      strokes: state.strokes.map(updateZIndex),
+      images: state.images.map(updateZIndex),
+      texts: state.texts.map(updateZIndex),
+      shapes: state.shapes.map(updateZIndex),
+      latex: state.latex.map(updateZIndex),
+      codes: state.codes.map(updateZIndex),
+      notes: state.notes.map(updateZIndex),
+      codeblocks: state.codeblocks.map(updateZIndex),
+      d3visualizations: state.d3visualizations.map(updateZIndex)
+    });
+  };
+
+  const handleSendToBack = () => {
+    if (selectedIds.length === 0 || !state) return;
+
+    // Find min z-index across all objects
+    const allObjects = [
+      ...state.strokes, ...state.images, ...state.texts, ...state.shapes,
+      ...state.latex, ...state.codes, ...state.notes,
+      ...state.codeblocks, ...state.d3visualizations
+    ];
+    const minZ = Math.min(...allObjects.map(o => o.zIndex || 0), 0);
+
+    // Update selected objects to minZ - 1
+    const updateZIndex = (obj: any) =>
+      selectedIds.includes(obj.id) ? { ...obj, zIndex: minZ - 1 } : obj;
+
+    handleUpdate({
+      strokes: state.strokes.map(updateZIndex),
+      images: state.images.map(updateZIndex),
+      texts: state.texts.map(updateZIndex),
+      shapes: state.shapes.map(updateZIndex),
+      latex: state.latex.map(updateZIndex),
+      codes: state.codes.map(updateZIndex),
+      notes: state.notes.map(updateZIndex),
+      codeblocks: state.codeblocks.map(updateZIndex),
+      d3visualizations: state.d3visualizations.map(updateZIndex)
+    });
+  };
+
+  const handleBringForward = () => {
+    if (selectedIds.length === 0 || !state) return;
+
+    // Increment z-index by 1
+    const updateZIndex = (obj: any) =>
+      selectedIds.includes(obj.id) ? { ...obj, zIndex: (obj.zIndex || 0) + 1 } : obj;
+
+    handleUpdate({
+      strokes: state.strokes.map(updateZIndex),
+      images: state.images.map(updateZIndex),
+      texts: state.texts.map(updateZIndex),
+      shapes: state.shapes.map(updateZIndex),
+      latex: state.latex.map(updateZIndex),
+      codes: state.codes.map(updateZIndex),
+      notes: state.notes.map(updateZIndex),
+      codeblocks: state.codeblocks.map(updateZIndex),
+      d3visualizations: state.d3visualizations.map(updateZIndex)
+    });
+  };
+
+  const handleSendBackward = () => {
+    if (selectedIds.length === 0 || !state) return;
+
+    // Decrement z-index by 1
+    const updateZIndex = (obj: any) =>
+      selectedIds.includes(obj.id) ? { ...obj, zIndex: (obj.zIndex || 0) - 1 } : obj;
+
+    handleUpdate({
+      strokes: state.strokes.map(updateZIndex),
+      images: state.images.map(updateZIndex),
+      texts: state.texts.map(updateZIndex),
+      shapes: state.shapes.map(updateZIndex),
+      latex: state.latex.map(updateZIndex),
+      codes: state.codes.map(updateZIndex),
+      notes: state.notes.map(updateZIndex),
+      codeblocks: state.codeblocks.map(updateZIndex),
+      d3visualizations: state.d3visualizations.map(updateZIndex)
+    });
+  };
+
   useEffect(() => {
      const handleKeyDown = (e: KeyboardEvent) => {
          const tagName = document.activeElement?.tagName.toLowerCase();
@@ -554,6 +652,35 @@ svg.append('path')
         if (e.key === 'e' || e.key === 'E') { e.preventDefault(); setTool('eraser'); return; }
         if (e.key === 'h' || e.key === 'H') { e.preventDefault(); setTool('hand'); return; }
         if (e.key === 't' || e.key === 'T') { e.preventDefault(); setTool('text'); return; }
+
+        // Layer ordering shortcuts
+        // Bring to Front: Cmd+Shift+]
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === ']') {
+          e.preventDefault();
+          handleBringToFront();
+          return;
+        }
+
+        // Send to Back: Cmd+Shift+[
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === '[') {
+          e.preventDefault();
+          handleSendToBack();
+          return;
+        }
+
+        // Bring Forward: Cmd+]
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === ']') {
+          e.preventDefault();
+          handleBringForward();
+          return;
+        }
+
+        // Send Backward: Cmd+[
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === '[') {
+          e.preventDefault();
+          handleSendBackward();
+          return;
+        }
 
         // Spacebar Pan
         if (e.code === 'Space' && !e.repeat) {

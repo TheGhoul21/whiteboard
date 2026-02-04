@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
+import { Html } from 'react-konva-utils';
 import Konva from 'konva';
-import type { D3VisualizationObj, ToolType } from '../types';
+import type { D3VisualizationObj, ToolType, CodeBlockObj } from '../types';
+import { ControlWidget } from './ControlWidget';
 
 interface D3VisualizationObjectProps {
   obj: D3VisualizationObj;
@@ -10,6 +12,10 @@ interface D3VisualizationObjectProps {
   sourceCodeBlockSelected?: boolean;
   draggable?: boolean;
   tool?: ToolType;
+  sourceCodeBlock?: CodeBlockObj;
+  onUpdateControl?: (controlId: string, value: any) => void;
+  onRefresh?: () => void;
+  onToggleControls?: () => void;
 }
 
 export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
@@ -18,11 +24,14 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
   isSelected = false,
   sourceCodeBlockSelected = false,
   draggable = true,
-  tool = 'select'
+  tool = 'select',
+  sourceCodeBlock,
+  onUpdateControl,
+  onRefresh,
+  onToggleControls
 }) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const isSelectMode = tool === 'select';
-  const isDrawingMode = ['pen', 'smooth-pen', 'highlighter', 'eraser', 'laser', 'rect', 'circle', 'arrow', 'text'].includes(tool);
 
   // Convert HTML content to image
   useEffect(() => {
@@ -186,6 +195,126 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
           listening={false}
           opacity={0.8}
         />
+      )}
+
+      {/* Controls panel when enabled */}
+      {obj.showControls && sourceCodeBlock?.controls && isSelectMode && (() => {
+        // Create controls with this visualization's own values
+        const visualizationControls = sourceCodeBlock.controls.map(control => ({
+          ...control,
+          value: obj.controlValues?.[control.label] !== undefined
+            ? obj.controlValues[control.label]
+            : control.value
+        }));
+
+        return (
+          <Html>
+            <div
+              style={{
+                position: 'absolute',
+                top: obj.height + 10,
+                left: 0,
+                width: obj.width,
+                backgroundColor: 'white',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                padding: '12px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                pointerEvents: 'auto'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px'
+                }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: '600', color: '#6b7280' }}>
+                  🎮
+                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRefresh?.();
+                    }}
+                    title="Update visualization"
+                    style={{
+                      padding: '4px 10px',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    ↻
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleControls?.();
+                    }}
+                    title="Hide controls"
+                    style={{
+                      padding: '4px 8px',
+                      backgroundColor: '#e5e7eb',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {visualizationControls.map((control) => (
+                <ControlWidget
+                  key={control.id}
+                  control={control}
+                  onChange={(value) => onUpdateControl?.(control.label, value)}
+                />
+              ))}
+            </div>
+          </Html>
+        );
+      })()}
+
+      {/* Show Controls toggle button when selected */}
+      {isSelected && !obj.showControls && sourceCodeBlock?.controls && isSelectMode && (
+        <Html>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleControls?.();
+            }}
+            title="Show controls"
+            style={{
+              position: 'absolute',
+              top: obj.height + 10,
+              left: 0,
+              padding: '6px 12px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '18px',
+              fontWeight: '500',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              pointerEvents: 'auto'
+            }}
+          >
+            🎮
+          </button>
+        </Html>
       )}
     </Group>
   );

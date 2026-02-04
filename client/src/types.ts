@@ -142,6 +142,11 @@ export interface CodeBlockObj {
     vizId: string;  // Target visualization to update
     controlValues: Record<string, any>;  // Control values to use for this execution
   };
+
+  // Animation state
+  animationId?: string;  // ID of associated animation
+  isRecording?: boolean;  // Whether currently recording keyframes
+  recordingStartTime?: number;  // Timestamp when recording started
 }
 
 // D3 Visualization output (separate object)

@@ -34,7 +34,8 @@ const initialState: AppState = {
    notes: [],
    frames: [],
    codeblocks: [],
-   d3visualizations: []
+   d3visualizations: [],
+   animations: []
 };
 
 const DEFAULT_SIZES: Record<ToolType, number> = {
@@ -135,7 +136,7 @@ function App() {
       const saved = localStorage.getItem('whiteboard-autosave');
       if (saved) {
         const data = JSON.parse(saved);
-        const { strokes, images, texts, shapes, latex, codes, notes, frames, codeblocks, d3visualizations, background: savedBg, zoom: savedZoom, viewPos: savedViewPos } = data;
+        const { strokes, images, texts, shapes, latex, codes, notes, frames, codeblocks, d3visualizations, animations, background: savedBg, zoom: savedZoom, viewPos: savedViewPos } = data;
         setState({
           strokes: strokes || [],
           images: images || [],
@@ -146,7 +147,8 @@ function App() {
           notes: notes || [],
           frames: frames || [],
           codeblocks: codeblocks || [],
-          d3visualizations: d3visualizations || []
+          d3visualizations: d3visualizations || [],
+          animations: animations || []
         }, true);
         if (savedBg) setBackground(savedBg);
         if (savedZoom) setZoom(savedZoom);
@@ -1129,6 +1131,7 @@ svg.append('path')
         notes={currentState.notes}
         codeblocks={currentState.codeblocks}
         d3visualizations={currentState.d3visualizations}
+        animations={currentState.animations}
         background={background}
         onUpdate={handleUpdate}
         stageRef={stageRef}

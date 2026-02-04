@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Group, Rect } from 'react-konva';
 import { Html } from 'react-konva-utils';
 import Konva from 'konva';
-import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType } from '../types';
+import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType, Animation } from '../types';
 import { ControlWidget } from './ControlWidget';
+import { AnimationPlayer } from './AnimationPlayer';
 import * as d3 from 'd3';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
@@ -20,6 +21,9 @@ interface CodeBlockObjectProps {
   onCreateVisualization: (viz: D3VisualizationObj, codeBlockUpdates: Partial<CodeBlockObj>) => void;
   onUpdateVisualization: (updates: { id: string; content: string }) => void;
   tool?: ToolType;
+  animation?: Animation;
+  onSaveKeyframe?: () => void;
+  onDeleteKeyframe?: (keyframeId: string) => void;
 }
 
 export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
@@ -30,7 +34,10 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   onUpdate,
   onCreateVisualization,
   onUpdateVisualization,
-  tool = 'select'
+  tool = 'select',
+  animation,
+  onSaveKeyframe,
+  onDeleteKeyframe
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -555,6 +562,54 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
               {obj.appendMode ? '⊕' : '↻'}
             </button>
 
+            {/* Recording controls */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (obj.isRecording) {
+                  // Stop recording
+                  onUpdate({ isRecording: false, recordingStartTime: undefined });
+                } else {
+                  // Start recording
+                  onUpdate({ isRecording: true, recordingStartTime: Date.now() });
+                }
+              }}
+              title={obj.isRecording ? 'Stop recording' : 'Start recording animation'}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: obj.isRecording ? '#fecaca' : '#e5e7eb',
+                color: obj.isRecording ? '#991b1b' : '#374151',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              {obj.isRecording ? '⏺' : '⏺'}
+            </button>
+
+            {obj.isRecording && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSaveKeyframe?.();
+                }}
+                title="Add keyframe at current time"
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: '#dbeafe',
+                  color: '#1d4ed8',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '500'
+                }}
+              >
+                + KF
+              </button>
+            )}
+
             {obj.lastExecuted && !obj.error && (
               <span style={{ fontSize: '14px', color: '#10b981' }} title="Code executed successfully">
                 ✓
@@ -648,6 +703,23 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                     />
                   ))}
                 </div>
+              )}
+
+              {/* Animation Player - when animation exists */}
+              {animation && animation.keyframes.length > 0 && obj.controls && (
+                <AnimationPlayer
+                  animation={animation}
+                  onUpdateControls={(values) => {
+                    // Update control values with interpolated values
+                    const updatedControls = obj.controls?.map(c => ({
+                      ...c,
+                      value: values[c.label] !== undefined ? values[c.label] : c.value
+                    }));
+                    onUpdate({ controls: updatedControls });
+                  }}
+                  onExecute={executeCode}
+                  onDeleteKeyframe={onDeleteKeyframe}
+                />
               )}
             </div>
           )}

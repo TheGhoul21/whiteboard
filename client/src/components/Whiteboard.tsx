@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
-import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj } from '../types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe } from '../types';
 import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints, getSmoothLinePath } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
@@ -23,8 +23,9 @@ interface WhiteboardProps {
   notes: NoteObj[];
   codeblocks: CodeBlockObj[];
   d3visualizations: D3VisualizationObj[];
+  animations: Animation[];
   background: BackgroundType;
-  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[] }> , overwrite?: boolean) => void;
+  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }> , overwrite?: boolean) => void;
   stageRef: React.RefObject<Konva.Stage | null>;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
@@ -49,6 +50,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   notes = [],
   codeblocks = [],
   d3visualizations = [],
+  animations = [],
   background,
   onUpdate,
   stageRef,
@@ -1649,6 +1651,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
     if (type === 'codeblock') {
       const cb = data as CodeBlockObj;
+      const animation = animations.find(a => a.codeBlockId === cb.id);
+
       return (
         <CodeBlockObject
           key={cb.id}
@@ -1657,6 +1661,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           onSelect={(e) => handleSmartObjectSelect(e, cb.id)}
           draggable={tool === 'select' && !isPanning.current}
           tool={tool}
+          animation={animation}
           onUpdate={(updates) => {
             console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
             const newCodeBlocks = codeblocks.map(block =>
@@ -1684,6 +1689,77 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             const newVizs = d3visualizations.map(v => v.id === updates.id ? { ...v, ...updates } : v);
             console.log('[Whiteboard] Updating with d3visualizations count:', newVizs.length);
             onUpdate({ d3visualizations: newVizs });
+          }}
+          onSaveKeyframe={() => {
+            if (!cb.controls || !cb.isRecording) return;
+
+            // Calculate time since recording started
+            const currentTime = cb.recordingStartTime
+              ? (Date.now() - cb.recordingStartTime) / 1000
+              : 0;
+
+            // Capture current control values
+            const controlValues: Record<string, any> = {};
+            cb.controls.forEach(c => {
+              controlValues[c.label] = c.value;
+            });
+
+            // Create keyframe
+            const newKeyframe: Keyframe = {
+              id: `kf-${Date.now()}`,
+              time: currentTime,
+              controlValues
+            };
+
+            // Get or create animation
+            let targetAnimation = animation;
+            if (!targetAnimation) {
+              targetAnimation = {
+                id: `anim-${Date.now()}`,
+                codeBlockId: cb.id,
+                keyframes: [],
+                duration: 10,  // Default 10 seconds
+                fps: 30,
+                loop: false
+              };
+            }
+
+            // Update animation with new keyframe
+            const updatedAnimation = {
+              ...targetAnimation,
+              keyframes: [...targetAnimation.keyframes, newKeyframe]
+                .sort((a, b) => a.time - b.time),
+              duration: Math.max(targetAnimation.duration, currentTime + 1)
+            };
+
+            // Update animations array
+            const newAnimations = animations
+              .filter(a => a.id !== updatedAnimation.id)
+              .concat(updatedAnimation);
+
+            // Update code block with animation ID
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === cb.id ? { ...block, animationId: updatedAnimation.id } : block
+            );
+
+            onUpdate({
+              animations: newAnimations,
+              codeblocks: newCodeBlocks
+            });
+          }}
+          onDeleteKeyframe={(keyframeId) => {
+            if (!animation) return;
+
+            const updatedAnimation = {
+              ...animation,
+              keyframes: animation.keyframes.filter(kf => kf.id !== keyframeId)
+            };
+
+            const newAnimations = animations.map(a =>
+              a.id === animation.id ? updatedAnimation : a
+            );
+
+            onUpdate({ animations: newAnimations });
           }}
         />
       );

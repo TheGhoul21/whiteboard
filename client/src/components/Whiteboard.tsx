@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
-import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe } from '../types';
+import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe, BoardAPI } from '../types';
 import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints, getSmoothLinePath } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
@@ -1392,6 +1392,150 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   // Sort by z-index
   renderableObjects.sort((a, b) => a.zIndex - b.zIndex);
 
+  // Helper to create Board API for a specific code block
+  const createBoardAPI = (codeBlock: CodeBlockObj): BoardAPI => {
+    console.log('[BoardAPI] Creating board API for code block:', codeBlock.id);
+    return {
+    // Reading elements
+    getImages: () => images.map(({ type, ...rest }) => rest),
+    getTexts: () => texts.map(({ type, ...rest }) => rest),
+    getShapes: () => {
+      console.log('[BoardAPI] getShapes called, count:', shapes.length);
+      return shapes.map(({ type, ...rest }) => rest);
+    },
+    getLatex: () => latex.map(({ type, ...rest }) => rest),
+    getStrokes: () => strokes,
+    getVisualizations: () => d3visualizations.map(({ type, ...rest }) => rest),
+    getAll: () => ({
+      images: images.map(({ type, ...rest }) => rest),
+      texts: texts.map(({ type, ...rest }) => rest),
+      shapes: shapes.map(({ type, ...rest }) => rest),
+      latex: latex.map(({ type, ...rest }) => rest),
+      strokes: strokes,
+      visualizations: d3visualizations.map(({ type, ...rest }) => rest)
+    }),
+
+    // Creating elements
+    addImage: (props) => {
+      const id = `img-${Date.now()}-${Math.random()}`;
+      const newImage: ImageObj = {
+        id,
+        type: 'image',
+        src: props.src || '',
+        x: props.x ?? 0,
+        y: props.y ?? 0,
+        width: props.width ?? 200,
+        height: props.height ?? 200,
+        rotation: props.rotation ?? 0,
+        zIndex: props.zIndex
+      };
+      onUpdate({ images: [...images, newImage] });
+      return id;
+    },
+
+    addText: (props) => {
+      const id = `txt-${Date.now()}-${Math.random()}`;
+      const newText: TextObj = {
+        id,
+        type: 'text',
+        text: props.text || '',
+        x: props.x ?? 0,
+        y: props.y ?? 0,
+        fontSize: props.fontSize ?? 16,
+        color: props.color || '#000000',
+        zIndex: props.zIndex
+      };
+      onUpdate({ texts: [...texts, newText] });
+      return id;
+    },
+
+    addShape: (props) => {
+      console.log('[BoardAPI] addShape called with:', props);
+      const id = `shp-${Date.now()}-${Math.random()}`;
+      const shapeType = (props as any).type || 'rect';
+      const newShape: ShapeObj = {
+        id,
+        type: shapeType,
+        x: props.x ?? 0,
+        y: props.y ?? 0,
+        width: props.width ?? 100,
+        height: props.height ?? 100,
+        points: props.points,
+        color: props.color || '#000000',
+        strokeWidth: props.strokeWidth ?? 2,
+        zIndex: props.zIndex
+      };
+      console.log('[BoardAPI] Creating shape:', newShape);
+      console.log('[BoardAPI] Current shapes count:', shapes.length);
+      onUpdate({ shapes: [...shapes, newShape] });
+      console.log('[BoardAPI] Update called, returning ID:', id);
+      return id;
+    },
+
+    addLatex: (props) => {
+      const id = `ltx-${Date.now()}-${Math.random()}`;
+      const newLatex: LatexObj = {
+        id,
+        type: 'latex',
+        text: props.text || '',
+        x: props.x ?? 0,
+        y: props.y ?? 0,
+        fontSize: props.fontSize ?? 16,
+        color: props.color || '#000000',
+        zIndex: props.zIndex
+      };
+      onUpdate({ latex: [...latex, newLatex] });
+      return id;
+    },
+
+    // Updating elements
+    updateElement: (id, updates) => {
+      // Find and update the element across all arrays
+      const newImages = images.map(img => img.id === id ? { ...img, ...updates } : img);
+      const newTexts = texts.map(txt => txt.id === id ? { ...txt, ...updates } : txt);
+      const newShapes = shapes.map(shp => shp.id === id ? { ...shp, ...updates } : shp);
+      const newLatex = latex.map(ltx => ltx.id === id ? { ...ltx, ...updates } : ltx);
+      const newStrokes = strokes.map(str => str.id === id ? { ...str, ...updates } : str);
+      const newVizs = d3visualizations.map(viz => viz.id === id ? { ...viz, ...updates } : viz);
+
+      onUpdate({
+        images: newImages,
+        texts: newTexts,
+        shapes: newShapes,
+        latex: newLatex,
+        strokes: newStrokes,
+        d3visualizations: newVizs
+      });
+    },
+
+    // Deleting elements
+    deleteElement: (id) => {
+      onUpdate({
+        images: images.filter(img => img.id !== id),
+        texts: texts.filter(txt => txt.id !== id),
+        shapes: shapes.filter(shp => shp.id !== id),
+        latex: latex.filter(ltx => ltx.id !== id),
+        strokes: strokes.filter(str => str.id !== id),
+        d3visualizations: d3visualizations.filter(viz => viz.id !== id)
+      });
+    },
+
+    // Utility
+    getViewport: () => ({
+      x: viewPos.x,
+      y: viewPos.y,
+      zoom: zoom
+    }),
+
+    getCodeBlockPosition: () => ({
+      x: codeBlock.x,
+      y: codeBlock.y,
+      width: codeBlock.width,
+      height: codeBlock.height
+    })
+  };
+  };
+
   // Render helper function
   const renderObject = (obj: RenderableObject): JSX.Element | null => {
     const { type, data } = obj;
@@ -1652,6 +1796,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (type === 'codeblock') {
       const cb = data as CodeBlockObj;
       const animation = animations.find(a => a.codeBlockId === cb.id);
+      const boardAPI = createBoardAPI(cb);
 
       return (
         <CodeBlockObject
@@ -1664,13 +1809,34 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           animation={animation}
           onUpdate={(updates) => {
             console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
-            const newCodeBlocks = codeblocks.map(block =>
-              block.id === cb.id ? { ...block, ...updates } : block
-            );
-            console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
-            onUpdate({
-              codeblocks: newCodeBlocks
-            });
+
+            // Handle programmatic animation creation
+            if ((updates as any).__programmaticAnimation) {
+              const newAnim = (updates as any).__programmaticAnimation;
+              const newAnimations = animations
+                .filter(a => a.id !== newAnim.id)
+                .concat(newAnim);
+
+              const cleanUpdates = { ...updates };
+              delete (cleanUpdates as any).__programmaticAnimation;
+
+              const newCodeBlocks = codeblocks.map(block =>
+                block.id === cb.id ? { ...block, ...cleanUpdates } : block
+              );
+
+              onUpdate({
+                codeblocks: newCodeBlocks,
+                animations: newAnimations
+              });
+            } else {
+              const newCodeBlocks = codeblocks.map(block =>
+                block.id === cb.id ? { ...block, ...updates } : block
+              );
+              console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
+              onUpdate({
+                codeblocks: newCodeBlocks
+              });
+            }
           }}
           onCreateVisualization={(viz, codeBlockUpdates) => {
             console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
@@ -1761,6 +1927,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
             onUpdate({ animations: newAnimations });
           }}
+          boardAPI={boardAPI}
         />
       );
     }

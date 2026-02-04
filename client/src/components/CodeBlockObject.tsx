@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Group, Rect } from 'react-konva';
 import { Html } from 'react-konva-utils';
 import Konva from 'konva';
-import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType, Animation } from '../types';
+import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType, Animation, BoardAPI } from '../types';
 import { ControlWidget } from './ControlWidget';
 import { AnimationPlayer } from './AnimationPlayer';
 import * as d3 from 'd3';
@@ -24,6 +24,7 @@ interface CodeBlockObjectProps {
   animation?: Animation;
   onSaveKeyframe?: () => void;
   onDeleteKeyframe?: (keyframeId: string) => void;
+  boardAPI?: BoardAPI;
 }
 
 export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
@@ -37,7 +38,8 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   tool = 'select',
   animation,
   onSaveKeyframe,
-  onDeleteKeyframe
+  onDeleteKeyframe,
+  boardAPI
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -267,14 +269,45 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             return value;
           },
 
-          log: (msg: any) => console.log('[CodeBlock]', msg)
+          // Programmatic animation creation
+          animate: (keyframeSpecs: Array<{ time: number, values: Record<string, any> }>, options?: { duration?: number, fps?: number, loop?: boolean }) => {
+            // Store animation spec to be processed after execution
+            (sandbox as any).__animationSpec = {
+              keyframes: keyframeSpecs,
+              options: options || {}
+            };
+          },
+
+          log: (msg: any) => console.log('[CodeBlock]', msg),
+
+          // Board API for reading/writing whiteboard elements
+          board: (() => {
+            console.log('[CodeBlock] Setting up board API, boardAPI exists:', !!boardAPI);
+            return boardAPI || {
+            getImages: () => [],
+            getTexts: () => [],
+            getShapes: () => [],
+            getLatex: () => [],
+            getStrokes: () => [],
+            getVisualizations: () => [],
+            getAll: () => ({ images: [], texts: [], shapes: [], latex: [], strokes: [], visualizations: [] }),
+            addImage: () => '',
+            addText: () => '',
+            addShape: () => '',
+            addLatex: () => '',
+            updateElement: () => {},
+            deleteElement: () => {},
+            getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+            getCodeBlockPosition: () => ({ x: 0, y: 0, width: 500, height: 400 })
+          };
+          })()
         };
 
         // 3. Execute user code
         console.log('[CodeBlock] Executing user code...');
         const userFunction = new Function(
           'output', 'd3', 'slider', 'input', 'checkbox',
-          'radio', 'color', 'select', 'range', 'button', 'toggle', 'log',
+          'radio', 'color', 'select', 'range', 'button', 'toggle', 'animate', 'log', 'board',
           obj.code
         );
 
@@ -290,7 +323,9 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
           sandbox.range,
           sandbox.button,
           sandbox.toggle,
-          sandbox.log
+          sandbox.animate,
+          sandbox.log,
+          sandbox.board
         );
 
         // 4. Extract output content
@@ -367,6 +402,40 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             // In append mode, keep the first outputId as reference, but we track all via a different mechanism
             outputId: obj.appendMode ? (obj.outputId || newVizId) : newVizId
           });
+        }
+
+        // 6. Process programmatic animation if specified
+        const animationSpec = (sandbox as any).__animationSpec;
+        if (animationSpec && animationSpec.keyframes && animationSpec.keyframes.length > 0) {
+          console.log('[CodeBlock] Processing programmatic animation with', animationSpec.keyframes.length, 'keyframes');
+
+          // Convert keyframe specs to proper Keyframe objects
+          const keyframes = animationSpec.keyframes.map((spec: any) => ({
+            id: `kf-${Date.now()}-${Math.random()}`,
+            time: spec.time,
+            controlValues: spec.values,
+            label: spec.label
+          }));
+
+          // Calculate max time for duration
+          const maxTime = Math.max(...keyframes.map((kf: any) => kf.time), 0);
+
+          // Create or update animation
+          const newAnimation = {
+            id: obj.animationId || `anim-${Date.now()}`,
+            codeBlockId: obj.id,
+            keyframes: keyframes,
+            duration: animationSpec.options?.duration || maxTime + 1,
+            fps: animationSpec.options?.fps || 30,
+            loop: animationSpec.options?.loop || false
+          };
+
+          // Notify parent to update animation
+          // We'll use a special update flag to signal animation creation
+          onUpdate({
+            animationId: newAnimation.id,
+            __programmaticAnimation: newAnimation
+          } as any);
         }
 
         console.log('[CodeBlock] Execution completed successfully');

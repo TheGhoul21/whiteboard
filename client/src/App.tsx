@@ -256,8 +256,10 @@ svg.append('path')
   .attr('stroke', 'red')
   .attr('stroke-width', 2)
   .attr('d', line);`,
-      x: (window.innerWidth / 2 - viewPos.x) / zoom - 250,
-      y: (window.innerHeight / 2 - viewPos.y) / zoom - 200,
+      // Place at a fixed, easy-to-find position on the canvas
+      // Stack new code blocks vertically if multiple exist
+      x: 50,
+      y: 50 + (state.codeblocks.length * 50),
       width: 500,
       height: 400,
       fontSize: 14,
@@ -267,6 +269,12 @@ svg.append('path')
     handleUpdate({ codeblocks: [...state.codeblocks, newCodeBlock] });
     setSelectedIds([newCodeBlock.id]);
     setTool('select');
+
+    // Pan viewport to show the new code block
+    setViewPos({
+      x: -(newCodeBlock.x - 100) * zoom,  // Center it with some margin
+      y: -(newCodeBlock.y - 100) * zoom
+    });
   };
 
   const copySelection = () => {

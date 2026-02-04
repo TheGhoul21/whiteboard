@@ -197,3 +197,38 @@ export interface Animation {
   fps: number;  // Frames per second for playback
   loop?: boolean;  // Whether to loop the animation
 }
+
+// Board API for code blocks to interact with whiteboard elements
+export interface BoardAPI {
+  // Reading elements
+  getImages: () => Omit<ImageObj, 'type'>[];
+  getTexts: () => Omit<TextObj, 'type'>[];
+  getShapes: () => Omit<ShapeObj, 'type'>[];
+  getLatex: () => Omit<LatexObj, 'type'>[];
+  getStrokes: () => Stroke[];
+  getVisualizations: () => Omit<D3VisualizationObj, 'type'>[];
+  getAll: () => {
+    images: Omit<ImageObj, 'type'>[];
+    texts: Omit<TextObj, 'type'>[];
+    shapes: Omit<ShapeObj, 'type'>[];
+    latex: Omit<LatexObj, 'type'>[];
+    strokes: Stroke[];
+    visualizations: Omit<D3VisualizationObj, 'type'>[];
+  };
+
+  // Creating elements (returns element ID)
+  addImage: (props: Partial<Omit<ImageObj, 'id' | 'type'>>) => string;
+  addText: (props: Partial<Omit<TextObj, 'id' | 'type'>>) => string;
+  addShape: (props: Partial<Omit<ShapeObj, 'id' | 'type'>>) => string;
+  addLatex: (props: Partial<Omit<LatexObj, 'id' | 'type'>>) => string;
+
+  // Updating elements
+  updateElement: (id: string, updates: any) => void;
+
+  // Deleting elements
+  deleteElement: (id: string) => void;
+
+  // Utility
+  getViewport: () => { x: number; y: number; zoom: number };
+  getCodeBlockPosition: () => { x: number; y: number; width: number; height: number };
+}

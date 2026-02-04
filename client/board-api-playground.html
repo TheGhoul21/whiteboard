@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Board API Playground</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      margin-top: 0;
+      color: #333;
+    }
+
+    h2 {
+      color: #666;
+      font-size: 18px;
+      margin-top: 0;
+    }
+
+    #code-editor {
+      width: 100%;
+      height: 400px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #282c34;
+      color: #abb2bf;
+      resize: vertical;
+    }
+
+    #controls {
+      margin: 15px 0;
+      padding: 15px;
+      background: #f9fafb;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+    }
+
+    .control {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .control label {
+      min-width: 100px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .control input[type="range"],
+    .control input[type="number"] {
+      flex: 1;
+    }
+
+    .control input[type="color"] {
+      width: 50px;
+      height: 30px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+
+    #output {
+      width: 100%;
+      min-height: 200px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      margin-top: 15px;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      height: 500px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .element {
+      position: absolute;
+      transition: all 0.1s ease;
+    }
+
+    .element-text {
+      font-family: Arial, sans-serif;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .element-shape {
+      border: 2px solid;
+      box-sizing: border-box;
+    }
+
+    .element-circle {
+      border-radius: 50%;
+    }
+
+    button {
+      padding: 8px 16px;
+      background: #10b981;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 8px;
+    }
+
+    button:hover {
+      background: #059669;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    #examples {
+      margin-top: 15px;
+    }
+
+    #examples button {
+      background: #3b82f6;
+      margin-bottom: 8px;
+      display: block;
+      width: 100%;
+    }
+
+    #examples button:hover {
+      background: #2563eb;
+    }
+
+    .info {
+      padding: 10px;
+      background: #dbeafe;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #1e40af;
+      margin-bottom: 15px;
+    }
+
+    #element-count {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel">
+      <h1>Board API Playground</h1>
+      <p class="info">
+        <strong>Interactive Board API Testing Environment</strong><br>
+        • Edit code in the editor and click "Run" to see results<br>
+        • Controls created by your code (slider, color, etc.) appear below the editor<br>
+        • The canvas on the right shows a simulated whiteboard with your elements<br>
+        • Try the example buttons to see different use cases<br>
+        • All examples work identically in the real whiteboard application
+      </p>
+
+      <h2>Code Editor</h2>
+      <textarea id="code-editor">// Try the examples below or write your own!
+const size = slider('Circle Size', 10, 100, 40, 5);
+const gridColor = color('Grid Color', '#3b82f6');
+const rows = slider('Rows', 1, 10, 3, 1);
+
+// Clear old elements
+board.getShapes().forEach(s => board.deleteElement(s.id));
+
+// Create a grid
+for (let row = 0; row < rows; row++) {
+  for (let col = 0; col < 3; col++) {
+    board.addShape({
+      type: 'circle',
+      x: col * 120 + 50,
+      y: row * 120 + 50,
+      width: size,
+      height: size,
+      color: gridColor,
+      strokeWidth: 2
+    });
+  }
+}
+
+output.innerHTML = `<div>Created ${rows * 3} circles</div>`;</textarea>
+
+      <div style="margin-top: 15px;">
+        <button id="run-btn">▶ Run Code</button>
+        <button id="clear-btn" style="background: #ef4444;">Clear Canvas</button>
+      </div>
+
+      <h2>Controls</h2>
+      <div id="controls">
+        <em style="color: #6b7280;">No controls yet. Run code that uses slider(), color(), etc.</em>
+      </div>
+
+      <h2>Output</h2>
+      <div id="output"></div>
+
+      <h2>Load Examples</h2>
+      <div id="examples">
+        <button onclick="loadExample('grid')">Grid of Circles</button>
+        <button onclick="loadExample('spiral')">Spiral Pattern</button>
+        <button onclick="loadExample('tree')">Binary Tree</button>
+        <button onclick="loadExample('sine')">Sine Wave</button>
+        <button onclick="loadExample('annotate')">Annotate Existing</button>
+        <button onclick="loadExample('force')">Force Layout</button>
+        <button onclick="loadExample('random')">Random Scatter</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Canvas (Whiteboard Simulation)</h2>
+      <div id="canvas-container"></div>
+      <div id="element-count"></div>
+    </div>
+  </div>
+
+  <script>
+    // Simulated whiteboard elements storage
+    let elements = {
+      images: [],
+      texts: [],
+      shapes: [],
+      latex: [],
+      strokes: [],
+      visualizations: []
+    };
+
+    let controlValues = new Map();
+    let controls = [];
+
+    // Board API implementation
+    const board = {
+      getImages: () => elements.images,
+      getTexts: () => elements.texts,
+      getShapes: () => elements.shapes,
+      getLatex: () => elements.latex,
+      getStrokes: () => elements.strokes,
+      getVisualizations: () => elements.visualizations,
+      getAll: () => ({ ...elements }),
+
+      addImage: (props) => {
+        const id = `img-${Date.now()}-${Math.random()}`;
+        elements.images.push({ id, ...props });
+        renderCanvas();
+        return id;
+      },
+
+      addText: (props) => {
+        const id = `txt-${Date.now()}-${Math.random()}`;
+        elements.texts.push({ id, ...props });
+        renderCanvas();
+        return id;
+      },
+
+      addShape: (props) => {
+        const id = `shp-${Date.now()}-${Math.random()}`;
+        elements.shapes.push({ id, ...props });
+        renderCanvas();
+        return id;
+      },
+
+      addLatex: (props) => {
+        const id = `ltx-${Date.now()}-${Math.random()}`;
+        elements.latex.push({ id, ...props });
+        renderCanvas();
+        return id;
+      },
+
+      updateElement: (id, updates) => {
+        ['images', 'texts', 'shapes', 'latex'].forEach(type => {
+          const idx = elements[type].findIndex(e => e.id === id);
+          if (idx !== -1) {
+            elements[type][idx] = { ...elements[type][idx], ...updates };
+          }
+        });
+        renderCanvas();
+      },
+
+      deleteElement: (id) => {
+        ['images', 'texts', 'shapes', 'latex'].forEach(type => {
+          elements[type] = elements[type].filter(e => e.id !== id);
+        });
+        renderCanvas();
+      },
+
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 })
+    };
+
+    // Control functions
+    function slider(label, min, max, initial, step = 1) {
+      const existing = controlValues.get(label);
+      const value = existing !== undefined ? existing : initial;
+      controls.push({ type: 'slider', label, value, min, max, step });
+      return value;
+    }
+
+    function color(label, initial) {
+      const existing = controlValues.get(label);
+      const value = existing !== undefined ? existing : initial;
+      controls.push({ type: 'color', label, value });
+      return value;
+    }
+
+    function checkbox(label, initial) {
+      const existing = controlValues.get(label);
+      const value = existing !== undefined ? existing : initial;
+      controls.push({ type: 'checkbox', label, value });
+      return value;
+    }
+
+    function input(label, initial) {
+      const existing = controlValues.get(label);
+      const value = existing !== undefined ? value : initial;
+      controls.push({ type: 'text', label, value });
+      return value;
+    }
+
+    // Render canvas
+    function renderCanvas() {
+      const container = document.getElementById('canvas-container');
+      container.innerHTML = '';
+
+      let totalElements = 0;
+
+      // Render shapes
+      elements.shapes.forEach(shape => {
+        const div = document.createElement('div');
+        div.className = 'element element-shape';
+        if (shape.type === 'circle') {
+          div.classList.add('element-circle');
+        }
+        div.style.left = shape.x + 'px';
+        div.style.top = shape.y + 'px';
+        div.style.width = (shape.width || 50) + 'px';
+        div.style.height = (shape.height || 50) + 'px';
+        div.style.borderColor = shape.color || '#000';
+        div.style.borderWidth = (shape.strokeWidth || 2) + 'px';
+        container.appendChild(div);
+        totalElements++;
+      });
+
+      // Render texts
+      elements.texts.forEach(text => {
+        const div = document.createElement('div');
+        div.className = 'element element-text';
+        div.textContent = text.text;
+        div.style.left = text.x + 'px';
+        div.style.top = text.y + 'px';
+        div.style.fontSize = (text.fontSize || 16) + 'px';
+        div.style.color = text.color || '#000';
+        container.appendChild(div);
+        totalElements++;
+      });
+
+      // Update count
+      document.getElementById('element-count').textContent =
+        `Elements: ${elements.shapes.length} shapes, ${elements.texts.length} texts (${totalElements} total)`;
+    }
+
+    // Render controls
+    function renderControls() {
+      const container = document.getElementById('controls');
+      if (controls.length === 0) {
+        container.innerHTML = '<em style="color: #6b7280;">No controls yet. Run code that uses slider(), color(), etc.</em>';
+        return;
+      }
+
+      container.innerHTML = '';
+      controls.forEach(control => {
+        const div = document.createElement('div');
+        div.className = 'control';
+
+        const label = document.createElement('label');
+        label.textContent = control.label;
+        div.appendChild(label);
+
+        if (control.type === 'slider') {
+          const range = document.createElement('input');
+          range.type = 'range';
+          range.min = control.min;
+          range.max = control.max;
+          range.step = control.step;
+          range.value = control.value;
+          range.addEventListener('input', (e) => {
+            controlValues.set(control.label, parseFloat(e.target.value));
+            numDisplay.textContent = e.target.value;
+            runCode();
+          });
+          div.appendChild(range);
+
+          const numDisplay = document.createElement('span');
+          numDisplay.textContent = control.value;
+          numDisplay.style.minWidth = '40px';
+          numDisplay.style.textAlign = 'right';
+          div.appendChild(numDisplay);
+        } else if (control.type === 'color') {
+          const colorInput = document.createElement('input');
+          colorInput.type = 'color';
+          colorInput.value = control.value;
+          colorInput.addEventListener('input', (e) => {
+            controlValues.set(control.label, e.target.value);
+            runCode();
+          });
+          div.appendChild(colorInput);
+
+          const hexDisplay = document.createElement('span');
+          hexDisplay.textContent = control.value;
+          div.appendChild(hexDisplay);
+          colorInput.addEventListener('input', (e) => {
+            hexDisplay.textContent = e.target.value;
+          });
+        } else if (control.type === 'checkbox') {
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = control.value;
+          checkbox.addEventListener('change', (e) => {
+            controlValues.set(control.label, e.target.checked);
+            runCode();
+          });
+          div.appendChild(checkbox);
+        }
+
+        container.appendChild(div);
+      });
+    }
+
+    // Run code
+    function runCode() {
+      const code = document.getElementById('code-editor').value;
+      const output = document.getElementById('output');
+
+      // Reset controls
+      controls = [];
+
+      try {
+        const userFunction = new Function(
+          'output', 'board', 'slider', 'color', 'checkbox', 'input',
+          code
+        );
+
+        userFunction(output, board, slider, color, checkbox, input);
+        renderControls();
+      } catch (error) {
+        output.innerHTML = `<div style="color: #ef4444;">Error: ${error.message}</div>`;
+        console.error(error);
+      }
+    }
+
+    // Clear canvas
+    function clearCanvas() {
+      elements = {
+        images: [],
+        texts: [],
+        shapes: [],
+        latex: [],
+        strokes: [],
+        visualizations: []
+      };
+      renderCanvas();
+    }
+
+    // Load example
+    function loadExample(name) {
+      const examples = {
+        grid: `// Interactive grid of circles
+const rows = slider('Rows', 1, 10, 4, 1);
+const cols = slider('Columns', 1, 10, 5, 1);
+const size = slider('Size', 10, 80, 40, 5);
+const spacing = slider('Spacing', 50, 150, 100, 10);
+const gridColor = color('Color', '#3b82f6');
+
+// Clear old shapes
+board.getShapes().forEach(s => board.deleteElement(s.id));
+board.getTexts().forEach(t => board.deleteElement(t.id));
+
+// Create grid
+for (let row = 0; row < rows; row++) {
+  for (let col = 0; col < cols; col++) {
+    const x = col * spacing + 50;
+    const y = row * spacing + 50;
+
+    board.addShape({
+      type: 'circle',
+      x: x,
+      y: y,
+      width: size,
+      height: size,
+      color: gridColor,
+      strokeWidth: 2
+    });
+
+    board.addText({
+      text: \`\${row},\${col}\`,
+      x: x + size / 3,
+      y: y + size / 3,
+      fontSize: 11,
+      color: '#000000'
+    });
+  }
+}
+
+output.innerHTML = \`<div>Created \${rows * cols} circles in a \${rows}×\${cols} grid</div>\`;`,
+
+        spiral: `// Spiral pattern
+const points = slider('Points', 10, 100, 50, 5);
+const turns = slider('Turns', 1, 10, 3, 0.5);
+const spiralColor = color('Color', '#8b5cf6');
+const dotSize = slider('Dot Size', 5, 30, 15, 1);
+
+// Clear old elements
+board.getShapes().forEach(s => board.deleteElement(s.id));
+
+// Create spiral
+for (let i = 0; i < points; i++) {
+  const t = (i / points) * turns * Math.PI * 2;
+  const r = (i / points) * 150;
+  const x = 250 + Math.cos(t) * r;
+  const y = 200 + Math.sin(t) * r;
+
+  board.addShape({
+    type: 'circle',
+    x: x,
+    y: y,
+    width: dotSize,
+    height: dotSize,
+    color: spiralColor,
+    strokeWidth: 2
+  });
+}
+
+output.innerHTML = \`<div>Created spiral with \${points} points and \${turns} turns</div>\`;`,
+
+        tree: `// Binary tree visualization
+const depth = slider('Depth', 1, 5, 3, 1);
+const hSpacing = slider('H-Spacing', 20, 100, 50, 5);
+const vSpacing = slider('V-Spacing', 40, 100, 60, 5);
+const nodeSize = slider('Node Size', 15, 40, 25, 5);
+const treeColor = color('Color', '#10b981');
+
+// Clear old elements
+board.getShapes().forEach(s => board.deleteElement(s.id));
+board.getTexts().forEach(t => board.deleteElement(t.id));
+
+let nodeCount = 0;
+
+function drawNode(x, y, level, maxLevel) {
+  if (level > maxLevel) return;
+
+  nodeCount++;
+
+  // Draw node
+  board.addShape({
+    type: 'circle',
+    x: x,
+    y: y,
+    width: nodeSize,
+    height: nodeSize,
+    color: treeColor,
+    strokeWidth: 2
+  });
+
+  board.addText({
+    text: String(nodeCount),
+    x: x + nodeSize / 3,
+    y: y + nodeSize / 3,
+    fontSize: 11,
+    color: '#000000'
+  });
+
+  // Draw children
+  if (level < maxLevel) {
+    const childY = y + vSpacing;
+    const offset = hSpacing * Math.pow(2, maxLevel - level - 1);
+
+    drawNode(x - offset, childY, level + 1, maxLevel);
+    drawNode(x + offset, childY, level + 1, maxLevel);
+  }
+}
+
+drawNode(250, 30, 0, depth - 1);
+
+output.innerHTML = \`<div>Created binary tree with depth \${depth} (\${nodeCount} nodes)</div>\`;`,
+
+        sine: `// Sine wave visualization
+const amplitude = slider('Amplitude', 10, 100, 50, 5);
+const frequency = slider('Frequency', 0.5, 5, 2, 0.5);
+const points = slider('Points', 20, 100, 50, 5);
+const waveColor = color('Color', '#f59e0b');
+
+// Clear old elements
+board.getShapes().forEach(s => board.deleteElement(s.id));
+
+// Draw sine wave
+for (let i = 0; i < points; i++) {
+  const x = (i / points) * 500 + 20;
+  const y = 200 + Math.sin((i / points) * frequency * Math.PI * 2) * amplitude;
+
+  board.addShape({
+    type: 'circle',
+    x: x,
+    y: y,
+    width: 8,
+    height: 8,
+    color: waveColor,
+    strokeWidth: 2
+  });
+}
+
+output.innerHTML = \`<div>Drew sine wave: amplitude=\${amplitude}, frequency=\${frequency}, points=\${points}</div>\`;`,
+
+        annotate: `// Annotate existing shapes
+const labelSize = slider('Label Size', 10, 24, 14, 1);
+const labelColor = color('Label Color', '#ef4444');
+const showBounds = checkbox('Show Bounds', true);
+
+// Get existing shapes
+const shapes = board.getShapes();
+
+// Clear old texts
+board.getTexts().forEach(t => board.deleteElement(t.id));
+
+// Annotate each shape
+shapes.forEach((shape, i) => {
+  // Add label
+  board.addText({
+    text: \`Shape \${i + 1}\`,
+    x: shape.x,
+    y: shape.y - 20,
+    fontSize: labelSize,
+    color: labelColor
+  });
+
+  // Add bounding box if enabled
+  if (showBounds) {
+    board.addShape({
+      type: 'rect',
+      x: shape.x - 5,
+      y: shape.y - 5,
+      width: (shape.width || 50) + 10,
+      height: (shape.height || 50) + 10,
+      color: labelColor,
+      strokeWidth: 1
+    });
+  }
+});
+
+output.innerHTML = \`<div>Annotated \${shapes.length} existing shapes</div>\`;`,
+
+        force: `// Simple force-directed layout
+const numNodes = slider('Nodes', 3, 20, 10, 1);
+const iterations = slider('Iterations', 10, 200, 80, 10);
+const nodeSize = slider('Node Size', 15, 40, 25, 5);
+
+// Initialize nodes randomly
+const nodes = Array.from({ length: numNodes }, () => ({
+  x: Math.random() * 400 + 50,
+  y: Math.random() * 300 + 50,
+  vx: 0,
+  vy: 0
+}));
+
+// Run simulation
+for (let iter = 0; iter < iterations; iter++) {
+  // Repulsion between all nodes
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dx = nodes[j].x - nodes[i].x;
+      const dy = nodes[j].y - nodes[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      const force = 800 / (dist * dist);
+      nodes[i].vx -= (dx / dist) * force;
+      nodes[i].vy -= (dy / dist) * force;
+      nodes[j].vx += (dx / dist) * force;
+      nodes[j].vy += (dy / dist) * force;
+    }
+  }
+
+  // Update positions with damping
+  nodes.forEach(n => {
+    n.x += n.vx * 0.1;
+    n.y += n.vy * 0.1;
+    n.vx *= 0.85;
+    n.vy *= 0.85;
+
+    // Keep in bounds
+    n.x = Math.max(50, Math.min(500, n.x));
+    n.y = Math.max(50, Math.min(450, n.y));
+  });
+}
+
+// Clear and draw
+board.getShapes().forEach(s => board.deleteElement(s.id));
+board.getTexts().forEach(t => board.deleteElement(t.id));
+
+nodes.forEach((node, i) => {
+  board.addShape({
+    type: 'circle',
+    x: node.x,
+    y: node.y,
+    width: nodeSize,
+    height: nodeSize,
+    color: '#8b5cf6',
+    strokeWidth: 2
+  });
+
+  board.addText({
+    text: String(i),
+    x: node.x + nodeSize / 3,
+    y: node.y + nodeSize / 3,
+    fontSize: 11,
+    color: '#000000'
+  });
+});
+
+output.innerHTML = \`<div>Laid out \${numNodes} nodes in \${iterations} iterations</div>\`;`,
+
+        random: `// Random scatter plot
+const count = slider('Point Count', 10, 100, 50, 5);
+const minSize = slider('Min Size', 5, 30, 10, 1);
+const maxSize = slider('Max Size', 10, 60, 40, 5);
+const pointColor = color('Color', '#ec4899');
+
+// Clear old elements
+board.getShapes().forEach(s => board.deleteElement(s.id));
+
+// Generate random points
+for (let i = 0; i < count; i++) {
+  const x = Math.random() * 450 + 25;
+  const y = Math.random() * 400 + 25;
+  const size = Math.random() * (maxSize - minSize) + minSize;
+
+  board.addShape({
+    type: 'circle',
+    x: x,
+    y: y,
+    width: size,
+    height: size,
+    color: pointColor,
+    strokeWidth: 2
+  });
+}
+
+output.innerHTML = \`<div>Created \${count} random points</div>\`;`
+      };
+
+      document.getElementById('code-editor').value = examples[name];
+      runCode();
+    }
+
+    // Event listeners
+    document.getElementById('run-btn').addEventListener('click', runCode);
+    document.getElementById('clear-btn').addEventListener('click', clearCanvas);
+
+    // Initial render
+    renderCanvas();
+
+    // Auto-run on load
+    setTimeout(() => runCode(), 100);
+  </script>
+</body>
+</html>

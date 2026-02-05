@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe, BoardAPI } from '../types';
-import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, smoothPoints, getSmoothLinePath } from '../utils/stroke';
+import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, getSmoothLinePath } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
 import { CodeBlockObject } from './CodeBlockObject';
@@ -25,7 +25,7 @@ interface WhiteboardProps {
   d3visualizations: D3VisualizationObj[];
   animations: Animation[];
   background: BackgroundType;
-  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }> , overwrite?: boolean) => void;
+  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }>, overwrite?: boolean) => void;
   stageRef: React.RefObject<Konva.Stage | null>;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
@@ -96,16 +96,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const isDrawing = useRef(false);
   const isSelecting = useRef(false);
   const isPanning = useRef(false);
-  const lastPointerPos = useRef<{x: number, y: number} | null>(null);
-  const selectionStart = useRef<{x: number, y: number} | null>(null);
+  const lastPointerPos = useRef<{ x: number, y: number } | null>(null);
+  const selectionStart = useRef<{ x: number, y: number } | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const [selectionBox, setSelectionBox] = useState<{x:number, y:number, width:number, height:number} | null>(null);
-  const [pointerPos, setPointerPos] = useState<{x: number, y: number} | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [pointerPos, setPointerPos] = useState<{ x: number, y: number } | null>(null);
   const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
 
-  const overlayDragStart = useRef<{x: number, y: number} | null>(null);
+  const overlayDragStart = useRef<{ x: number, y: number } | null>(null);
 
-  const [selectionOverlay, setSelectionOverlay] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+  const [selectionOverlay, setSelectionOverlay] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
 
   // Helper function to detect if a stroke is a rough square/rectangle
   const detectSquareShape = (points: number[]): { isSquare: boolean, bounds?: { x: number, y: number, width: number, height: number } } => {
@@ -221,133 +221,133 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const getSelectionBBox = () => {
-     if (selectedIds.length < 1) return null;
+    if (selectedIds.length < 1) return null;
 
-     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-     let found = false;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let found = false;
 
-     // Calculate from data objects directly (world coordinates) instead of node.getClientRect()
-     selectedIds.forEach(id => {
-        // Check strokes
-        const stroke = strokes.find(s => s.id === id);
-        if (stroke) {
-           found = true;
-           for (let i = 0; i < stroke.points.length; i += 2) {
-              minX = Math.min(minX, stroke.points[i] - stroke.size / 2);
-              maxX = Math.max(maxX, stroke.points[i] + stroke.size / 2);
-              minY = Math.min(minY, stroke.points[i + 1] - stroke.size / 2);
-              maxY = Math.max(maxY, stroke.points[i + 1] + stroke.size / 2);
-           }
+    // Calculate from data objects directly (world coordinates) instead of node.getClientRect()
+    selectedIds.forEach(id => {
+      // Check strokes
+      const stroke = strokes.find(s => s.id === id);
+      if (stroke) {
+        found = true;
+        for (let i = 0; i < stroke.points.length; i += 2) {
+          minX = Math.min(minX, stroke.points[i] - stroke.size / 2);
+          maxX = Math.max(maxX, stroke.points[i] + stroke.size / 2);
+          minY = Math.min(minY, stroke.points[i + 1] - stroke.size / 2);
+          maxY = Math.max(maxY, stroke.points[i + 1] + stroke.size / 2);
         }
+      }
 
-        // Check images
-        const image = images.find(img => img.id === id);
-        if (image) {
-           found = true;
-           minX = Math.min(minX, image.x);
-           minY = Math.min(minY, image.y);
-           maxX = Math.max(maxX, image.x + image.width);
-           maxY = Math.max(maxY, image.y + image.height);
-        }
+      // Check images
+      const image = images.find(img => img.id === id);
+      if (image) {
+        found = true;
+        minX = Math.min(minX, image.x);
+        minY = Math.min(minY, image.y);
+        maxX = Math.max(maxX, image.x + image.width);
+        maxY = Math.max(maxY, image.y + image.height);
+      }
 
-        // Check texts
-        const text = texts.find(t => t.id === id);
-        if (text) {
-           found = true;
-           const w = text.text.length * (text.fontSize * 0.6);
-           const h = text.fontSize * 1.2;
-           minX = Math.min(minX, text.x);
-           minY = Math.min(minY, text.y);
-           maxX = Math.max(maxX, text.x + w);
-           maxY = Math.max(maxY, text.y + h);
-        }
+      // Check texts
+      const text = texts.find(t => t.id === id);
+      if (text) {
+        found = true;
+        const w = text.text.length * (text.fontSize * 0.6);
+        const h = text.fontSize * 1.2;
+        minX = Math.min(minX, text.x);
+        minY = Math.min(minY, text.y);
+        maxX = Math.max(maxX, text.x + w);
+        maxY = Math.max(maxY, text.y + h);
+      }
 
-        // Check shapes
-        const shape = shapes.find(s => s.id === id);
-        if (shape) {
-           found = true;
-           minX = Math.min(minX, shape.x);
-           minY = Math.min(minY, shape.y);
-           maxX = Math.max(maxX, shape.x + (shape.width || 50));
-           maxY = Math.max(maxY, shape.y + (shape.height || 50));
-        }
+      // Check shapes
+      const shape = shapes.find(s => s.id === id);
+      if (shape) {
+        found = true;
+        minX = Math.min(minX, shape.x);
+        minY = Math.min(minY, shape.y);
+        maxX = Math.max(maxX, shape.x + (shape.width || 50));
+        maxY = Math.max(maxY, shape.y + (shape.height || 50));
+      }
 
-        // Check latex, codes, notes
-        const latexObj = latex.find(l => l.id === id);
-        if (latexObj) {
-           found = true;
-           minX = Math.min(minX, latexObj.x);
-           minY = Math.min(minY, latexObj.y);
-           maxX = Math.max(maxX, latexObj.x + 100);
-           maxY = Math.max(maxY, latexObj.y + 40);
-        }
+      // Check latex, codes, notes
+      const latexObj = latex.find(l => l.id === id);
+      if (latexObj) {
+        found = true;
+        minX = Math.min(minX, latexObj.x);
+        minY = Math.min(minY, latexObj.y);
+        maxX = Math.max(maxX, latexObj.x + 100);
+        maxY = Math.max(maxY, latexObj.y + 40);
+      }
 
-        const codeObj = codes.find(c => c.id === id);
-        if (codeObj) {
-           found = true;
-           minX = Math.min(minX, codeObj.x);
-           minY = Math.min(minY, codeObj.y);
-           maxX = Math.max(maxX, codeObj.x + codeObj.width);
-           maxY = Math.max(maxY, codeObj.y + codeObj.height);
-        }
+      const codeObj = codes.find(c => c.id === id);
+      if (codeObj) {
+        found = true;
+        minX = Math.min(minX, codeObj.x);
+        minY = Math.min(minY, codeObj.y);
+        maxX = Math.max(maxX, codeObj.x + codeObj.width);
+        maxY = Math.max(maxY, codeObj.y + codeObj.height);
+      }
 
-        const noteObj = notes.find(n => n.id === id);
-        if (noteObj) {
-           found = true;
-           minX = Math.min(minX, noteObj.x);
-           minY = Math.min(minY, noteObj.y);
-           maxX = Math.max(maxX, noteObj.x + noteObj.width);
-           maxY = Math.max(maxY, noteObj.y + noteObj.height);
-        }
+      const noteObj = notes.find(n => n.id === id);
+      if (noteObj) {
+        found = true;
+        minX = Math.min(minX, noteObj.x);
+        minY = Math.min(minY, noteObj.y);
+        maxX = Math.max(maxX, noteObj.x + noteObj.width);
+        maxY = Math.max(maxY, noteObj.y + noteObj.height);
+      }
 
-        // Check codeblocks
-        const codeBlock = codeblocks.find(cb => cb.id === id);
-        if (codeBlock) {
-           found = true;
-           minX = Math.min(minX, codeBlock.x);
-           minY = Math.min(minY, codeBlock.y);
-           maxX = Math.max(maxX, codeBlock.x + codeBlock.width);
-           maxY = Math.max(maxY, codeBlock.y + codeBlock.height);
-        }
+      // Check codeblocks
+      const codeBlock = codeblocks.find(cb => cb.id === id);
+      if (codeBlock) {
+        found = true;
+        minX = Math.min(minX, codeBlock.x);
+        minY = Math.min(minY, codeBlock.y);
+        maxX = Math.max(maxX, codeBlock.x + codeBlock.width);
+        maxY = Math.max(maxY, codeBlock.y + codeBlock.height);
+      }
 
-        // Check d3visualizations
-        const viz = d3visualizations.find(v => v.id === id);
-        if (viz) {
-           found = true;
-           minX = Math.min(minX, viz.x);
-           minY = Math.min(minY, viz.y);
-           maxX = Math.max(maxX, viz.x + viz.width);
-           maxY = Math.max(maxY, viz.y + viz.height);
-        }
-     });
+      // Check d3visualizations
+      const viz = d3visualizations.find(v => v.id === id);
+      if (viz) {
+        found = true;
+        minX = Math.min(minX, viz.x);
+        minY = Math.min(minY, viz.y);
+        maxX = Math.max(maxX, viz.x + viz.width);
+        maxY = Math.max(maxY, viz.y + viz.height);
+      }
+    });
 
-     if (!found) return null;
-     return { x: minX - 5, y: minY - 5, width: maxX - minX + 10, height: maxY - minY + 10 };
+    if (!found) return null;
+    return { x: minX - 5, y: minY - 5, width: maxX - minX + 10, height: maxY - minY + 10 };
   };
 
   // Update overlay when not dragging
   useEffect(() => {
-     if (!isDraggingOverlay) {
-        const bbox = getSelectionBBox();
-        setSelectionOverlay(bbox);
-     }
+    if (!isDraggingOverlay) {
+      const bbox = getSelectionBBox();
+      setSelectionOverlay(bbox);
+    }
   }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations, isDraggingOverlay]);
 
   useEffect(() => {
-     let anim: number;
-     const animate = () => {
-        const now = Date.now();
-         const hasLaser = strokes.some(s => s.tool === 'laser');
-         if (hasLaser) {
-            const activeStrokes = strokes.filter(s => s.tool !== 'laser' || (s.createdAt && now - s.createdAt < 15000));
-            if (activeStrokes.length !== strokes.length) {
-               onUpdate({ strokes: activeStrokes }, true);
-            }
-         }
-        anim = requestAnimationFrame(animate);
-     };
-     anim = requestAnimationFrame(animate);
-     return () => cancelAnimationFrame(anim);
+    let anim: number;
+    const animate = () => {
+      const now = Date.now();
+      const hasLaser = strokes.some(s => s.tool === 'laser');
+      if (hasLaser) {
+        const activeStrokes = strokes.filter(s => s.tool !== 'laser' || (s.createdAt && now - s.createdAt < 15000));
+        if (activeStrokes.length !== strokes.length) {
+          onUpdate({ strokes: activeStrokes }, true);
+        }
+      }
+      anim = requestAnimationFrame(animate);
+    };
+    anim = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(anim);
   }, [strokes, onUpdate]);
 
   useEffect(() => {
@@ -359,274 +359,274 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   }, [selectedIds, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations]);
 
   useEffect(() => {
-     if (stageRef.current) {
-        const stage = stageRef.current;
-        if (stage.scaleX() !== zoom) {
-           stage.scale({x: zoom, y: zoom});
-        }
-        if (stage.x() !== viewPos.x || stage.y() !== viewPos.y) {
-           stage.position(viewPos);
-        }
-        stage.batchDraw();
-     }
+    if (stageRef.current) {
+      const stage = stageRef.current;
+      if (stage.scaleX() !== zoom) {
+        stage.scale({ x: zoom, y: zoom });
+      }
+      if (stage.x() !== viewPos.x || stage.y() !== viewPos.y) {
+        stage.position(viewPos);
+      }
+      stage.batchDraw();
+    }
   }, [zoom, viewPos]);
 
   useEffect(() => {
-     // Reset pointer position when changing tool
-     if (tool !== 'pointer') {
-        setPointerPos(null);
-     }
+    // Reset pointer position when changing tool
+    if (tool !== 'pointer') {
+      setPointerPos(null);
+    }
   }, [tool]);
 
   useEffect(() => {
-     // Force recalculation of overlay when selection changes
-     if (selectedIds.length > 0 && stageRef.current) {
-        setTimeout(() => {
-           stageRef.current?.batchDraw();
-        }, 0);
-     }
+    // Force recalculation of overlay when selection changes
+    if (selectedIds.length > 0 && stageRef.current) {
+      setTimeout(() => {
+        stageRef.current?.batchDraw();
+      }, 0);
+    }
   }, [selectedIds]);
 
   // Paste Handler (Code omitted for brevity, same as before)
   useEffect(() => {
-     const handlePaste = (e: ClipboardEvent) => {
-        const text = e.clipboardData?.getData('text');
-        const items = e.clipboardData?.items;
+    const handlePaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData('text');
+      const items = e.clipboardData?.items;
 
-        if (items) {
-           for (const item of items) {
-              if (item.type.indexOf('image') !== -1) {
-                 const blob = item.getAsFile();
-                 if (!blob) continue;
-                 const reader = new FileReader();
-                 reader.onload = (event) => {
-                    const base64 = event.target?.result as string;
-                    const stage = stageRef.current;
-                    const absPos = { 
-                       x: -stage!.x() + stage!.width() / 2,
-                       y: -stage!.y() + stage!.height() / 2
-                    };
-                    const scale = stage!.scaleX();
-                    const x = absPos.x / scale;
-                    const y = absPos.y / scale;
+      if (items) {
+        for (const item of items) {
+          if (item.type.indexOf('image') !== -1) {
+            const blob = item.getAsFile();
+            if (!blob) continue;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const base64 = event.target?.result as string;
+              const stage = stageRef.current;
+              const absPos = {
+                x: -stage!.x() + stage!.width() / 2,
+                y: -stage!.y() + stage!.height() / 2
+              };
+              const scale = stage!.scaleX();
+              const x = absPos.x / scale;
+              const y = absPos.y / scale;
 
-                    const newImage: ImageObj = {
-                       id: Date.now().toString(),
-                       type: 'image',
-                       src: base64,
-                       x: x - 100,
-                       y: y - 100,
-                       width: 200,
-                       height: 200,
-                    };
-                    onUpdate({ images: [...images, newImage] });
-                    setTool('select');
-                 };
-                 reader.readAsDataURL(blob);
-                 return;
-              }
-           }
+              const newImage: ImageObj = {
+                id: Date.now().toString(),
+                type: 'image',
+                src: base64,
+                x: x - 100,
+                y: y - 100,
+                width: 200,
+                height: 200,
+              };
+              onUpdate({ images: [...images, newImage] });
+              setTool('select');
+            };
+            reader.readAsDataURL(blob);
+            return;
+          }
         }
+      }
 
-        if (!text) return;
-        
-        const stage = stageRef.current;
-        const pointer = stage?.getPointerPosition();
-        let targetX = 100, targetY = 100;
-        
-        if (pointer) {
-           const transform = stage?.getAbsoluteTransform().copy().invert();
-           const pt = transform?.point(pointer);
-           if (pt) { targetX = pt.x; targetY = pt.y; }
-        } else {
-           const absPos = { 
-              x: -stage!.x() + stage!.width() / 2,
-              y: -stage!.y() + stage!.height() / 2
-           };
-           const scale = stage!.scaleX();
-           targetX = absPos.x / scale;
-           targetY = absPos.y / scale;
-        }
-        
-        const codeMatch = text.match(/```(\w+)?\n([\s\S]*?)```/);
-        const latexMatch = text.match(/```latex\n([\s\S]*?)```/) || text.match(/\$\$([\s\S]*?)\$\$/);
-        const noteMatch = text.match(/```note\n([\s\S]*?)```/);
+      if (!text) return;
 
-        if (codeMatch && !latexMatch && !noteMatch) {
-           e.preventDefault();
-           const newCode: CodeObj = {
-              id: Date.now().toString(),
-              type: 'code',
-              text: codeMatch[2],
-              language: codeMatch[1] || '',
-              x: targetX,
-              y: targetY,
-              width: 300,
-              height: 200,
-              fontSize: 14
-           };
-           onUpdate({ codes: [...codes, newCode] });
-           setTool('select');
-           return;
-        }
+      const stage = stageRef.current;
+      const pointer = stage?.getPointerPosition();
+      let targetX = 100, targetY = 100;
 
-        if (latexMatch) {
-           e.preventDefault();
-           const newLatex: LatexObj = {
-              id: Date.now().toString(),
-              type: 'latex',
-              text: latexMatch[1],
-              x: targetX,
-              y: targetY,
-              fontSize: 24,
-              color: color
-           };
-           onUpdate({ latex: [...latex, newLatex] });
-           setTool('select');
-           return;
-        }
+      if (pointer) {
+        const transform = stage?.getAbsoluteTransform().copy().invert();
+        const pt = transform?.point(pointer);
+        if (pt) { targetX = pt.x; targetY = pt.y; }
+      } else {
+        const absPos = {
+          x: -stage!.x() + stage!.width() / 2,
+          y: -stage!.y() + stage!.height() / 2
+        };
+        const scale = stage!.scaleX();
+        targetX = absPos.x / scale;
+        targetY = absPos.y / scale;
+      }
 
-        if (noteMatch) {
-           e.preventDefault();
-           const newNote: NoteObj = {
-              id: Date.now().toString(),
-              type: 'note',
-              text: noteMatch[1],
-              x: targetX,
-              y: targetY,
-              width: 200,
-              height: 200,
-              color: '#fef3c7' 
-           };
-           onUpdate({ notes: [...notes, newNote] });
-           setTool('select');
-           return;
-        }
-     };
-     window.addEventListener('paste', handlePaste);
-     return () => window.removeEventListener('paste', handlePaste);
+      const codeMatch = text.match(/```(\w+)?\n([\s\S]*?)```/);
+      const latexMatch = text.match(/```latex\n([\s\S]*?)```/) || text.match(/\$\$([\s\S]*?)\$\$/);
+      const noteMatch = text.match(/```note\n([\s\S]*?)```/);
+
+      if (codeMatch && !latexMatch && !noteMatch) {
+        e.preventDefault();
+        const newCode: CodeObj = {
+          id: Date.now().toString(),
+          type: 'code',
+          text: codeMatch[2],
+          language: codeMatch[1] || '',
+          x: targetX,
+          y: targetY,
+          width: 300,
+          height: 200,
+          fontSize: 14
+        };
+        onUpdate({ codes: [...codes, newCode] });
+        setTool('select');
+        return;
+      }
+
+      if (latexMatch) {
+        e.preventDefault();
+        const newLatex: LatexObj = {
+          id: Date.now().toString(),
+          type: 'latex',
+          text: latexMatch[1],
+          x: targetX,
+          y: targetY,
+          fontSize: 24,
+          color: color
+        };
+        onUpdate({ latex: [...latex, newLatex] });
+        setTool('select');
+        return;
+      }
+
+      if (noteMatch) {
+        e.preventDefault();
+        const newNote: NoteObj = {
+          id: Date.now().toString(),
+          type: 'note',
+          text: noteMatch[1],
+          x: targetX,
+          y: targetY,
+          width: 200,
+          height: 200,
+          color: '#fef3c7'
+        };
+        onUpdate({ notes: [...notes, newNote] });
+        setTool('select');
+        return;
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
   }, [codes, latex, notes, images, color, onUpdate]);
 
 
   useEffect(() => {
-     // Global mouseup handler to ensure selection finishes even if released outside or swallowed
-     const handleGlobalMouseUp = (e: any) => {
-        if (isSelecting.current && selectionBox) {
-           // Only process box selection if user actually moved (box has size)
-           if (selectionBox.width > 3 || selectionBox.height > 3) {
-              try {
-                const box = selectionBox;
-                const allIds: string[] = [];
+    // Global mouseup handler to ensure selection finishes even if released outside or swallowed
+    const handleGlobalMouseUp = (e: any) => {
+      if (isSelecting.current && selectionBox) {
+        // Only process box selection if user actually moved (box has size)
+        if (selectionBox.width > 3 || selectionBox.height > 3) {
+          try {
+            const box = selectionBox;
+            const allIds: string[] = [];
 
-                const overlaps = (objBox: {x:number, y:number, width:number, height:number}) => {
-                   return (
-                      box.x < objBox.x + objBox.width &&
-                      box.x + box.width > objBox.x &&
-                      box.y < objBox.y + objBox.height &&
-                      box.y + box.height > objBox.y
-                   );
-                };
+            const overlaps = (objBox: { x: number, y: number, width: number, height: number }) => {
+              return (
+                box.x < objBox.x + objBox.width &&
+                box.x + box.width > objBox.x &&
+                box.y < objBox.y + objBox.height &&
+                box.y + box.height > objBox.y
+              );
+            };
 
-                // Check strokes using their actual points data (world coordinates)
-                strokes.forEach(stroke => {
-                   if (stroke.tool === 'laser') return; // Skip laser
-                   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                   for (let i = 0; i < stroke.points.length; i += 2) {
-                      minX = Math.min(minX, stroke.points[i]);
-                      maxX = Math.max(maxX, stroke.points[i]);
-                      minY = Math.min(minY, stroke.points[i + 1]);
-                      maxY = Math.max(maxY, stroke.points[i + 1]);
-                   }
-                   
-                   if (minX === Infinity) return;
-
-                   const strokeBox = {
-                      x: minX - stroke.size / 2,
-                      y: minY - stroke.size / 2,
-                      width: maxX - minX + stroke.size,
-                      height: maxY - minY + stroke.size
-                   };
-                   if (overlaps(strokeBox)) allIds.push(stroke.id);
-                });
-
-                // Check images
-                images.forEach(img => {
-                   const imgBox = { x: img.x, y: img.y, width: img.width, height: img.height };
-                   if (overlaps(imgBox)) allIds.push(img.id);
-                });
-
-                // Check texts
-                texts.forEach(txt => {
-                   const w = txt.text.length * (txt.fontSize * 0.6);
-                   const h = txt.fontSize * 1.2;
-                   const txtBox = { x: txt.x, y: txt.y, width: w, height: h };
-                   if (overlaps(txtBox)) allIds.push(txt.id);
-                });
-
-                // Check shapes
-                shapes.forEach(shape => {
-                   const shapeBox = {
-                      x: shape.x,
-                      y: shape.y,
-                      width: shape.width || 50,
-                      height: shape.height || 50
-                   };
-                   if (overlaps(shapeBox)) allIds.push(shape.id);
-                });
-
-                // Check latex, codes, notes
-                latex.forEach(l => {
-                   const lBox = { x: l.x, y: l.y, width: 100, height: 40 };
-                   if (overlaps(lBox)) allIds.push(l.id);
-                });
-
-                codes.forEach(c => {
-                   const cBox = { x: c.x, y: c.y, width: c.width, height: c.height };
-                   if (overlaps(cBox)) allIds.push(c.id);
-                });
-
-                notes.forEach(n => {
-                   const nBox = { x: n.x, y: n.y, width: n.width, height: n.height };
-                   if (overlaps(nBox)) allIds.push(n.id);
-                });
-
-                // Check codeblocks
-                codeblocks.forEach(cb => {
-                   const cbBox = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
-                   if (overlaps(cbBox)) allIds.push(cb.id);
-                });
-
-                // Check d3visualizations
-                d3visualizations.forEach(v => {
-                   const vBox = { x: v.x, y: v.y, width: v.width, height: v.height };
-                   if (overlaps(vBox)) allIds.push(v.id);
-                });
-
-                const isModifier = e.shiftKey || e.ctrlKey || e.metaKey;
-
-                if (isModifier) {
-                   const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
-                   setSelectedIds(uniqueIds);
-                } else {
-                   setSelectedIds(allIds);
-                }
-              } catch (err) {
-                 console.error('Selection error:', err);
+            // Check strokes using their actual points data (world coordinates)
+            strokes.forEach(stroke => {
+              if (stroke.tool === 'laser') return; // Skip laser
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (let i = 0; i < stroke.points.length; i += 2) {
+                minX = Math.min(minX, stroke.points[i]);
+                maxX = Math.max(maxX, stroke.points[i]);
+                minY = Math.min(minY, stroke.points[i + 1]);
+                maxY = Math.max(maxY, stroke.points[i + 1]);
               }
-           }
-           
-           setSelectionBox(null);
-           isSelecting.current = false;
-        }
-     };
 
-     window.addEventListener('mouseup', handleGlobalMouseUp);
-     window.addEventListener('touchend', handleGlobalMouseUp);
-     
-     return () => {
-        window.removeEventListener('mouseup', handleGlobalMouseUp);
-        window.removeEventListener('touchend', handleGlobalMouseUp);
-     };
+              if (minX === Infinity) return;
+
+              const strokeBox = {
+                x: minX - stroke.size / 2,
+                y: minY - stroke.size / 2,
+                width: maxX - minX + stroke.size,
+                height: maxY - minY + stroke.size
+              };
+              if (overlaps(strokeBox)) allIds.push(stroke.id);
+            });
+
+            // Check images
+            images.forEach(img => {
+              const imgBox = { x: img.x, y: img.y, width: img.width, height: img.height };
+              if (overlaps(imgBox)) allIds.push(img.id);
+            });
+
+            // Check texts
+            texts.forEach(txt => {
+              const w = txt.text.length * (txt.fontSize * 0.6);
+              const h = txt.fontSize * 1.2;
+              const txtBox = { x: txt.x, y: txt.y, width: w, height: h };
+              if (overlaps(txtBox)) allIds.push(txt.id);
+            });
+
+            // Check shapes
+            shapes.forEach(shape => {
+              const shapeBox = {
+                x: shape.x,
+                y: shape.y,
+                width: shape.width || 50,
+                height: shape.height || 50
+              };
+              if (overlaps(shapeBox)) allIds.push(shape.id);
+            });
+
+            // Check latex, codes, notes
+            latex.forEach(l => {
+              const lBox = { x: l.x, y: l.y, width: 100, height: 40 };
+              if (overlaps(lBox)) allIds.push(l.id);
+            });
+
+            codes.forEach(c => {
+              const cBox = { x: c.x, y: c.y, width: c.width, height: c.height };
+              if (overlaps(cBox)) allIds.push(c.id);
+            });
+
+            notes.forEach(n => {
+              const nBox = { x: n.x, y: n.y, width: n.width, height: n.height };
+              if (overlaps(nBox)) allIds.push(n.id);
+            });
+
+            // Check codeblocks
+            codeblocks.forEach(cb => {
+              const cbBox = { x: cb.x, y: cb.y, width: cb.width, height: cb.height };
+              if (overlaps(cbBox)) allIds.push(cb.id);
+            });
+
+            // Check d3visualizations
+            d3visualizations.forEach(v => {
+              const vBox = { x: v.x, y: v.y, width: v.width, height: v.height };
+              if (overlaps(vBox)) allIds.push(v.id);
+            });
+
+            const isModifier = e.shiftKey || e.ctrlKey || e.metaKey;
+
+            if (isModifier) {
+              const uniqueIds = Array.from(new Set([...selectedIds, ...allIds]));
+              setSelectedIds(uniqueIds);
+            } else {
+              setSelectedIds(allIds);
+            }
+          } catch (err) {
+            console.error('Selection error:', err);
+          }
+        }
+
+        setSelectionBox(null);
+        isSelecting.current = false;
+      }
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    window.addEventListener('touchend', handleGlobalMouseUp);
+
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('touchend', handleGlobalMouseUp);
+    };
   }, [selectionBox, strokes, images, texts, shapes, latex, codes, notes, codeblocks, d3visualizations, selectedIds]);
 
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -637,9 +637,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (!pos || !pointerPos) return;
 
     if (e.evt instanceof MouseEvent && e.evt.button === 2) {
-       isPanning.current = true;
-       lastPointerPos.current = pointerPos;
-       return;
+      isPanning.current = true;
+      lastPointerPos.current = pointerPos;
+      return;
     }
 
     if (tool === 'hand') return;
@@ -647,12 +647,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (tool === 'select') {
       const target = e.target;
       if (target.getParent()?.className === 'Transformer') {
-         return;
+        return;
       }
 
       // Check if we hit the Selection Overlay
       if (target.name() === 'selection-overlay') {
-         return; 
+        return;
       }
 
       const targetId = target.id() || target.attrs.id;
@@ -662,31 +662,31 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const isBackground = target === stage || target.getParent()?.name() === 'background-group';
 
       if (idToSelect && !isBackground) {
-         const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-         if (isModifier) {
-            if (selectedIds.includes(idToSelect)) {
-               setSelectedIds(selectedIds.filter(id => id !== idToSelect));
-            } else {
-               setSelectedIds([...selectedIds, idToSelect]);
-            }
-            return;
-         }
-         if (selectedIds.includes(idToSelect)) {
-            return;
-         }
-         setSelectedIds([idToSelect]);
-         return;
+        const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+        if (isModifier) {
+          if (selectedIds.includes(idToSelect)) {
+            setSelectedIds(selectedIds.filter(id => id !== idToSelect));
+          } else {
+            setSelectedIds([...selectedIds, idToSelect]);
+          }
+          return;
+        }
+        if (selectedIds.includes(idToSelect)) {
+          return;
+        }
+        setSelectedIds([idToSelect]);
+        return;
       }
 
       // Clicking on background - clear selection and start box selection
       const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
       if (!isModifier) {
-         // Clear existing selection when clicking background
-         setSelectedIds([]);
-         // Start box selection
-         isSelecting.current = true;
-         selectionStart.current = pos;
-         setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        // Clear existing selection when clicking background
+        setSelectedIds([]);
+        // Start box selection
+        isSelecting.current = true;
+        selectionStart.current = pos;
+        setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       }
       return;
     }
@@ -694,46 +694,46 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     isDrawing.current = true;
 
     if (tool === 'text') {
-       const text = prompt("Enter text:");
-       if (text) {
-          // Calculate max z-index considering default z-indexes during rendering
-          const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
-            if (obj.zIndex !== undefined) return obj.zIndex;
-            const baseZIndexes: Record<string, number> = {
-              'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
-              'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
-            };
-            return (baseZIndexes[type] || 0) + index;
+      const text = prompt("Enter text:");
+      if (text) {
+        // Calculate max z-index considering default z-indexes during rendering
+        const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
+          if (obj.zIndex !== undefined) return obj.zIndex;
+          const baseZIndexes: Record<string, number> = {
+            'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
+            'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
           };
+          return (baseZIndexes[type] || 0) + index;
+        };
 
-          const maxZ = Math.max(
-            ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
-            ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
-            ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
-            ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
-            ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
-            ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
-            ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
-            ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
-            ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
-            0
-          );
+        const maxZ = Math.max(
+          ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
+          ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
+          ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
+          ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
+          ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
+          ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
+          ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
+          ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
+          ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
+          0
+        );
 
-          const newText: TextObj = {
-             id: Date.now().toString(),
-             type: 'text',
-             x: pos.x,
-             y: pos.y,
-             text: text,
-             fontSize: size * 5,
-             color: color,
-             zIndex: maxZ + 1  // Place new text on top
-          };
-          onUpdate({ texts: [...texts, newText] });
-          setTool('select');
-       }
-       isDrawing.current = false;
-       return;
+        const newText: TextObj = {
+          id: Date.now().toString(),
+          type: 'text',
+          x: pos.x,
+          y: pos.y,
+          text: text,
+          fontSize: size * 5,
+          color: color,
+          zIndex: maxZ + 1  // Place new text on top
+        };
+        onUpdate({ texts: [...texts, newText] });
+        setTool('select');
+      }
+      isDrawing.current = false;
+      return;
     }
 
     if (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser' || tool === 'laser') {
@@ -772,44 +772,44 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       };
       onUpdate({ strokes: [...strokes, newStroke] });
     }
-    
+
     if (tool === 'rect' || tool === 'circle' || tool === 'arrow') {
-       // Calculate max z-index considering default z-indexes during rendering
-       const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
-         if (obj.zIndex !== undefined) return obj.zIndex;
-         const baseZIndexes: Record<string, number> = {
-           'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
-           'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
-         };
-         return (baseZIndexes[type] || 0) + index;
-       };
+      // Calculate max z-index considering default z-indexes during rendering
+      const getEffectiveZIndex = (obj: any, type: string, index: number): number => {
+        if (obj.zIndex !== undefined) return obj.zIndex;
+        const baseZIndexes: Record<string, number> = {
+          'stroke': 0, 'image': 1000, 'text': 2000, 'shape': 3000,
+          'latex': 4000, 'code': 5000, 'note': 6000, 'codeblock': 7000, 'd3viz': 8000
+        };
+        return (baseZIndexes[type] || 0) + index;
+      };
 
-       const maxZ = Math.max(
-         ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
-         ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
-         ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
-         ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
-         ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
-         ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
-         ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
-         ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
-         ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
-         0
-       );
+      const maxZ = Math.max(
+        ...strokes.map((s, i) => getEffectiveZIndex(s, 'stroke', i)),
+        ...images.map((img, i) => getEffectiveZIndex(img, 'image', i)),
+        ...texts.map((t, i) => getEffectiveZIndex(t, 'text', i)),
+        ...shapes.map((s, i) => getEffectiveZIndex(s, 'shape', i)),
+        ...latex.map((l, i) => getEffectiveZIndex(l, 'latex', i)),
+        ...codes.map((c, i) => getEffectiveZIndex(c, 'code', i)),
+        ...notes.map((n, i) => getEffectiveZIndex(n, 'note', i)),
+        ...codeblocks.map((cb, i) => getEffectiveZIndex(cb, 'codeblock', i)),
+        ...d3visualizations.map((v, i) => getEffectiveZIndex(v, 'd3viz', i)),
+        0
+      );
 
-       const newShape: ShapeObj = {
-          id: Date.now().toString(),
-          type: tool,
-          x: pos.x,
-          y: pos.y,
-          width: 0,
-          height: 0,
-          points: [0, 0, 0, 0],
-          color: color,
-          strokeWidth: size,
-          zIndex: maxZ + 1  // Place new shape on top
-       };
-       onUpdate({ shapes: [...shapes, newShape] });
+      const newShape: ShapeObj = {
+        id: Date.now().toString(),
+        type: tool,
+        x: pos.x,
+        y: pos.y,
+        width: 0,
+        height: 0,
+        points: [0, 0, 0, 0],
+        color: color,
+        strokeWidth: size,
+        zIndex: maxZ + 1  // Place new shape on top
+      };
+      onUpdate({ shapes: [...shapes, newShape] });
     }
   };
 
@@ -818,14 +818,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (!stage) return;
 
     if (isPanning.current && lastPointerPos.current) {
-       const pointerPos = stage.getPointerPosition();
-       if (!pointerPos) return;
-       const dx = pointerPos.x - lastPointerPos.current.x;
-       const dy = pointerPos.y - lastPointerPos.current.y;
-       const newPos = { x: stage.x() + dx, y: stage.y() + dy };
-       setViewPos(newPos);
-       lastPointerPos.current = pointerPos;
-       return;
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
+      const dx = pointerPos.x - lastPointerPos.current.x;
+      const dy = pointerPos.y - lastPointerPos.current.y;
+      const newPos = { x: stage.x() + dx, y: stage.y() + dy };
+      setViewPos(newPos);
+      lastPointerPos.current = pointerPos;
+      return;
     }
 
     const pos = stage.getRelativePointerPosition();
@@ -833,30 +833,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
     // Update pointer position for spotlight effect
     if (tool === 'pointer') {
-       setPointerPos(pos);
-       return;
+      setPointerPos(pos);
+      return;
     }
 
     if (tool === 'hand') return;
 
     if (tool === 'select' && isSelecting.current && selectionStart.current) {
-       const sx = selectionStart.current.x;
-       const sy = selectionStart.current.y;
-       const moved = Math.abs(pos.x - sx) > 3 || Math.abs(pos.y - sy) > 3;
+      const sx = selectionStart.current.x;
+      const sy = selectionStart.current.y;
+      const moved = Math.abs(pos.x - sx) > 3 || Math.abs(pos.y - sy) > 3;
 
-       if (moved) {
-          // User is actually dragging - clear selection and start box
-          if (selectedIds.length > 0) {
-             setSelectedIds([]);
-          }
-          setSelectionBox({
-             x: Math.min(sx, pos.x),
-             y: Math.min(sy, pos.y),
-             width: Math.abs(pos.x - sx),
-             height: Math.abs(pos.y - sy)
-          });
-       }
-       return;
+      if (moved) {
+        // User is actually dragging - clear selection and start box
+        if (selectedIds.length > 0) {
+          setSelectedIds([]);
+        }
+        setSelectionBox({
+          x: Math.min(sx, pos.x),
+          y: Math.min(sy, pos.y),
+          width: Math.abs(pos.x - sx),
+          height: Math.abs(pos.y - sy)
+        });
+      }
+      return;
     }
 
     if (!isDrawing.current) return;
@@ -893,22 +893,22 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     }
 
     if (tool === 'rect' || tool === 'circle') {
-       const lastShape = shapes[shapes.length - 1];
-       if (!lastShape) return;
-       const w = pos.x - lastShape.x;
-       const h = pos.y - lastShape.y;
-       const newShapes = [...shapes];
-       newShapes[newShapes.length - 1] = { ...lastShape, width: w, height: h };
-       onUpdate({ shapes: newShapes }, true);
+      const lastShape = shapes[shapes.length - 1];
+      if (!lastShape) return;
+      const w = pos.x - lastShape.x;
+      const h = pos.y - lastShape.y;
+      const newShapes = [...shapes];
+      newShapes[newShapes.length - 1] = { ...lastShape, width: w, height: h };
+      onUpdate({ shapes: newShapes }, true);
     }
-    
+
     if (tool === 'arrow') {
-       const lastShape = shapes[shapes.length - 1];
-       if (!lastShape) return;
-       const newPoints = [0, 0, pos.x - lastShape.x, pos.y - lastShape.y];
-       const newShapes = [...shapes];
-       newShapes[newShapes.length - 1] = { ...lastShape, points: newPoints };
-       onUpdate({ shapes: newShapes }, true);
+      const lastShape = shapes[shapes.length - 1];
+      if (!lastShape) return;
+      const newPoints = [0, 0, pos.x - lastShape.x, pos.y - lastShape.y];
+      const newShapes = [...shapes];
+      newShapes[newShapes.length - 1] = { ...lastShape, points: newPoints };
+      onUpdate({ shapes: newShapes }, true);
     }
   };
 
@@ -917,270 +917,202 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     lastPointerPos.current = null;
 
     if (isSelecting.current && selectionBox) {
-       if (selectionBox.width > 3 || selectionBox.height > 3) {
-          const box = selectionBox;
-          const allIds: string[] = [];
+      if (selectionBox.width > 3 || selectionBox.height > 3) {
+        const box = selectionBox;
+        const allIds: string[] = [];
 
-          const overlaps = (objBox: {x:number, y:number, width:number, height:number}) => {
-             return (
-                box.x < objBox.x + objBox.width &&
-                box.x + box.width > objBox.x &&
-                box.y < objBox.y + objBox.height &&
-                box.y + box.height > objBox.y
-             );
-          };
+        const overlaps = (objBox: { x: number, y: number, width: number, height: number }) => {
+          return (
+            box.x < objBox.x + objBox.width &&
+            box.x + box.width > objBox.x &&
+            box.y < objBox.y + objBox.height &&
+            box.y + box.height > objBox.y
+          );
+        };
 
-          strokes.forEach(stroke => {
-             if (stroke.tool === 'laser') return;
-             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-             for (let i = 0; i < stroke.points.length; i += 2) {
-                minX = Math.min(minX, stroke.points[i]);
-                maxX = Math.max(maxX, stroke.points[i]);
-                minY = Math.min(minY, stroke.points[i+1]);
-                maxY = Math.max(maxY, stroke.points[i+1]);
-             }
-             if (minX !== Infinity && overlaps({
-                x: minX - stroke.size/2,
-                y: minY - stroke.size/2,
-                width: maxX - minX + stroke.size,
-                height: maxY - minY + stroke.size
-             })) allIds.push(stroke.id);
-          });
-
-          images.forEach(img => {
-             if (overlaps({ x: img.x, y: img.y, width: img.width, height: img.height })) allIds.push(img.id);
-          });
-
-          texts.forEach(txt => {
-             const w = txt.text.length * (txt.fontSize * 0.6);
-             const h = txt.fontSize * 1.2;
-             if (overlaps({ x: txt.x, y: txt.y, width: w, height: h })) allIds.push(txt.id);
-          });
-
-          shapes.forEach(shape => {
-             if (overlaps({ x: shape.x, y: shape.y, width: shape.width || 50, height: shape.height || 50 })) allIds.push(shape.id);
-          });
-
-          [...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].forEach(obj => {
-             const w = 'width' in obj ? obj.width : 100;
-             const h = 'height' in obj ? obj.height : 40;
-             if (overlaps({ x: obj.x, y: obj.y, width: w, height: h })) allIds.push(obj.id);
-          });
-
-          const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-          if (isModifier) {
-             setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
-          } else {
-             setSelectedIds(allIds);
+        strokes.forEach(stroke => {
+          if (stroke.tool === 'laser') return;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (let i = 0; i < stroke.points.length; i += 2) {
+            minX = Math.min(minX, stroke.points[i]);
+            maxX = Math.max(maxX, stroke.points[i]);
+            minY = Math.min(minY, stroke.points[i + 1]);
+            maxY = Math.max(maxY, stroke.points[i + 1]);
           }
-       }
-       setSelectionBox(null);
-       isSelecting.current = false;
+          if (minX !== Infinity && overlaps({
+            x: minX - stroke.size / 2,
+            y: minY - stroke.size / 2,
+            width: maxX - minX + stroke.size,
+            height: maxY - minY + stroke.size
+          })) allIds.push(stroke.id);
+        });
+
+        images.forEach(img => {
+          if (overlaps({ x: img.x, y: img.y, width: img.width, height: img.height })) allIds.push(img.id);
+        });
+
+        texts.forEach(txt => {
+          const w = txt.text.length * (txt.fontSize * 0.6);
+          const h = txt.fontSize * 1.2;
+          if (overlaps({ x: txt.x, y: txt.y, width: w, height: h })) allIds.push(txt.id);
+        });
+
+        shapes.forEach(shape => {
+          if (overlaps({ x: shape.x, y: shape.y, width: shape.width || 50, height: shape.height || 50 })) allIds.push(shape.id);
+        });
+
+        [...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].forEach(obj => {
+          const w = 'width' in obj ? obj.width : 100;
+          const h = 'height' in obj ? obj.height : 40;
+          if (overlaps({ x: obj.x, y: obj.y, width: w, height: h })) allIds.push(obj.id);
+        });
+
+        const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+        if (isModifier) {
+          setSelectedIds(Array.from(new Set([...selectedIds, ...allIds])));
+        } else {
+          setSelectedIds(allIds);
+        }
+      }
+      setSelectionBox(null);
+      isSelecting.current = false;
     }
 
     // Handle single-point strokes (dots)
     if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen' || tool === 'highlighter' || tool === 'eraser')) {
-       const lastStroke = strokes[strokes.length - 1];
-       if (lastStroke && lastStroke.points.length <= 4) {
-          let isEssentiallyAPoint = lastStroke.points.length === 2;
-          if (lastStroke.points.length === 4) {
-             const dx = lastStroke.points[2] - lastStroke.points[0];
-             const dy = lastStroke.points[3] - lastStroke.points[1];
-             isEssentiallyAPoint = Math.sqrt(dx*dx + dy*dy) < lastStroke.size * 0.3;
-          }
-          if (isEssentiallyAPoint) {
-             const x = lastStroke.points[0];
-             const y = lastStroke.points[1];
-             const updatedStroke = { ...lastStroke, points: [x, y, x + 0.1, y + 0.1] };
-             onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
-          }
-       }
+      const lastStroke = strokes[strokes.length - 1];
+      if (lastStroke && lastStroke.points.length <= 4) {
+        let isEssentiallyAPoint = lastStroke.points.length === 2;
+        if (lastStroke.points.length === 4) {
+          const dx = lastStroke.points[2] - lastStroke.points[0];
+          const dy = lastStroke.points[3] - lastStroke.points[1];
+          isEssentiallyAPoint = Math.sqrt(dx * dx + dy * dy) < lastStroke.size * 0.3;
+        }
+        if (isEssentiallyAPoint) {
+          const x = lastStroke.points[0];
+          const y = lastStroke.points[1];
+          const updatedStroke = { ...lastStroke, points: [x, y, x + 0.1, y + 0.1] };
+          onUpdate({ strokes: [...strokes.slice(0, -1), updatedStroke] }, true);
+        }
+      }
     }
 
     // Auto-detect and convert rough squares to perfect rectangles
     if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen')) {
-       const lastStroke = strokes[strokes.length - 1];
-       if (lastStroke && lastStroke.points.length > 10) {
-          const detection = detectSquareShape(lastStroke.points);
-          if (detection.isSquare && detection.bounds) {
-             // Remove the stroke and create a perfect rectangle shape
-             const newShape: ShapeObj = {
-                id: Date.now().toString(),
-                type: 'rect',
-                x: detection.bounds.x,
-                y: detection.bounds.y,
-                width: detection.bounds.width,
-                height: detection.bounds.height,
-                points: [0, 0, 0, 0],
-                color: lastStroke.color,
-                strokeWidth: lastStroke.size
-             };
-             onUpdate({
-                strokes: strokes.slice(0, -1), // Remove the rough stroke
-                shapes: [...shapes, newShape]   // Add perfect rectangle
-             }, true);
-          }
-       }
+      const lastStroke = strokes[strokes.length - 1];
+      if (lastStroke && lastStroke.points.length > 10) {
+        const detection = detectSquareShape(lastStroke.points);
+        if (detection.isSquare && detection.bounds) {
+          // Remove the stroke and create a perfect rectangle shape
+          const newShape: ShapeObj = {
+            id: Date.now().toString(),
+            type: 'rect',
+            x: detection.bounds.x,
+            y: detection.bounds.y,
+            width: detection.bounds.width,
+            height: detection.bounds.height,
+            points: [0, 0, 0, 0],
+            color: lastStroke.color,
+            strokeWidth: lastStroke.size
+          };
+          onUpdate({
+            strokes: strokes.slice(0, -1), // Remove the rough stroke
+            shapes: [...shapes, newShape]   // Add perfect rectangle
+          }, true);
+        }
+      }
     }
 
     isDrawing.current = false;
     isSelecting.current = false;
 
     if (tool !== 'select' && tool !== 'hand') {
-       onUpdate({}, false);
-       if (tool === 'text') setTool('select');
+      onUpdate({}, false);
+      if (tool === 'text') setTool('select');
     }
   };
 
   const handleDragStart = (e: Konva.KonvaEventObject<DragEvent>) => {
-     if(tool === 'hand') return;
+    if (tool === 'hand') return;
 
-     if (e.target.name() === 'selection-overlay') {
-        setIsDraggingOverlay(true);
-        overlayDragStart.current = e.target.getPosition();
-     }
+    if (e.target.name() === 'selection-overlay') {
+      setIsDraggingOverlay(true);
+      overlayDragStart.current = e.target.getPosition();
+    }
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
-     if (tool === 'hand') return;
+    if (tool === 'hand') return;
 
-     if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
-        const currentPos = e.target.getPosition();
-        const dx = currentPos.x - overlayDragStart.current.x;
-        const dy = currentPos.y - overlayDragStart.current.y;
+    if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
+      const currentPos = e.target.getPosition();
+      const dx = currentPos.x - overlayDragStart.current.x;
+      const dy = currentPos.y - overlayDragStart.current.y;
 
-        // Move all selected nodes visually
-        selectedIds.forEach(selId => {
-           const node = stageRef.current?.findOne('#' + selId);
+      // Move all selected nodes visually
+      selectedIds.forEach(selId => {
+        const node = stageRef.current?.findOne('#' + selId);
 
-           // Check in all types including strokes
-           const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === selId);
-           const strokeOriginal = strokes.find(s => s.id === selId);
+        // Check in all types including strokes
+        const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === selId);
+        const strokeOriginal = strokes.find(s => s.id === selId);
 
-           if (node && original) {
-              // Regular objects with x/y
-              node.setPosition({ x: original.x + dx, y: original.y + dy });
-           } else if (node && strokeOriginal) {
-              // Strokes use position offset (points are relative to 0,0)
-              node.setPosition({ x: dx, y: dy });
-           }
-        });
+        if (node && original) {
+          // Regular objects with x/y
+          node.setPosition({ x: original.x + dx, y: original.y + dy });
+        } else if (node && strokeOriginal) {
+          // Strokes use position offset (points are relative to 0,0)
+          node.setPosition({ x: dx, y: dy });
+        }
+      });
 
-        stageRef.current?.batchDraw();
-     }
+      stageRef.current?.batchDraw();
+    }
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-     if(tool === 'hand') {
-        if(e.target === e.target.getStage()) {
-           setViewPos(e.target.position());
-        }
+    if (tool === 'hand') {
+      if (e.target === e.target.getStage()) {
+        setViewPos(e.target.position());
+      }
+      return;
+    }
+
+    // Handle overlay drag
+    if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
+      const currentPos = e.target.getPosition();
+      const dx = currentPos.x - overlayDragStart.current.x;
+      const dy = currentPos.y - overlayDragStart.current.y;
+
+      overlayDragStart.current = null;
+
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+        setIsDraggingOverlay(false);
         return;
-     }
+      }
 
-     // Handle overlay drag
-     if (e.target.name() === 'selection-overlay' && overlayDragStart.current) {
-        const currentPos = e.target.getPosition();
-        const dx = currentPos.x - overlayDragStart.current.x;
-        const dy = currentPos.y - overlayDragStart.current.y;
-
-        overlayDragStart.current = null;
-
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-           setIsDraggingOverlay(false);
-           return;
-        }
-
-        // Apply delta to ALL selected items
-        const newImages = images.map(img => selectedIds.includes(img.id) ? { ...img, x: img.x + dx, y: img.y + dy } : img);
-        const newTexts = texts.map(txt => selectedIds.includes(txt.id) ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
-        const newShapes = shapes.map(shp => selectedIds.includes(shp.id) ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
-        const newLatex = latex.map(l => selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l);
-        const newCodes = codes.map(c => selectedIds.includes(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c);
-        const newNotes = notes.map(n => selectedIds.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n);
-        const newCodeBlocks = codeblocks.map(cb => selectedIds.includes(cb.id) ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
-        const newD3Visualizations = d3visualizations.map(v => selectedIds.includes(v.id) ? { ...v, x: v.x + dx, y: v.y + dy } : v);
-        const newStrokes = strokes.map(s => {
-           if (selectedIds.includes(s.id)) {
-              const newPoints = [];
-              for(let i=0; i<s.points.length; i+=2) {
-                 newPoints.push(s.points[i] + dx);
-                 newPoints.push(s.points[i+1] + dy);
-              }
-              return { ...s, points: newPoints };
-           }
-           return s;
-        });
-
-        onUpdate({
-           strokes: newStrokes,
-           images: newImages,
-           texts: newTexts,
-           shapes: newShapes,
-           latex: newLatex,
-           codes: newCodes,
-           notes: newNotes,
-           codeblocks: newCodeBlocks,
-           d3visualizations: newD3Visualizations
-        });
-
-        // Reset manual positions after state update
-        setTimeout(() => {
-           selectedIds.forEach(selId => {
-              const node = stageRef.current?.findOne('#' + selId);
-              if (node && node.name() === 'stroke') {
-                 node.setPosition({ x: 0, y: 0 });
-              }
-           });
-           setIsDraggingOverlay(false);
-           stageRef.current?.batchDraw();
-        }, 0);
-
-        return;
-     }
-
-     // Handle single object drag
-     const id = e.target.id();
-     if (!id) return;
-
-     const isStroke = e.target.name() === 'stroke';
-     let dx = 0, dy = 0;
-
-     if (isStroke) {
-        dx = e.target.x();
-        dy = e.target.y();
-        e.target.position({ x: 0, y: 0 });
-     } else {
-        const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === id);
-        if (original) {
-           dx = e.target.x() - original.x;
-           dy = e.target.y() - original.y;
-        }
-     }
-
-     if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
-
-     const newImages = images.map(img => img.id === id ? { ...img, x: img.x + dx, y: img.y + dy } : img);
-     const newTexts = texts.map(txt => txt.id === id ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
-     const newShapes = shapes.map(shp => shp.id === id ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
-     const newLatex = latex.map(l => l.id === id ? { ...l, x: l.x + dx, y: l.y + dy } : l);
-     const newCodes = codes.map(c => c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c);
-     const newNotes = notes.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n);
-     const newCodeBlocks = codeblocks.map(cb => cb.id === id ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
-     const newD3Visualizations = d3visualizations.map(v => v.id === id ? { ...v, x: v.x + dx, y: v.y + dy } : v);
-     const newStrokes = strokes.map(s => {
-        if (s.id === id) {
-           const newPoints = [];
-           for(let i=0; i<s.points.length; i+=2) {
-              newPoints.push(s.points[i] + dx);
-              newPoints.push(s.points[i+1] + dy);
-           }
-           return { ...s, points: newPoints };
+      // Apply delta to ALL selected items
+      const newImages = images.map(img => selectedIds.includes(img.id) ? { ...img, x: img.x + dx, y: img.y + dy } : img);
+      const newTexts = texts.map(txt => selectedIds.includes(txt.id) ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
+      const newShapes = shapes.map(shp => selectedIds.includes(shp.id) ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
+      const newLatex = latex.map(l => selectedIds.includes(l.id) ? { ...l, x: l.x + dx, y: l.y + dy } : l);
+      const newCodes = codes.map(c => selectedIds.includes(c.id) ? { ...c, x: c.x + dx, y: c.y + dy } : c);
+      const newNotes = notes.map(n => selectedIds.includes(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+      const newCodeBlocks = codeblocks.map(cb => selectedIds.includes(cb.id) ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
+      const newD3Visualizations = d3visualizations.map(v => selectedIds.includes(v.id) ? { ...v, x: v.x + dx, y: v.y + dy } : v);
+      const newStrokes = strokes.map(s => {
+        if (selectedIds.includes(s.id)) {
+          const newPoints = [];
+          for (let i = 0; i < s.points.length; i += 2) {
+            newPoints.push(s.points[i] + dx);
+            newPoints.push(s.points[i + 1] + dy);
+          }
+          return { ...s, points: newPoints };
         }
         return s;
-     });
+      });
 
-     onUpdate({
+      onUpdate({
         strokes: newStrokes,
         images: newImages,
         texts: newTexts,
@@ -1190,122 +1122,190 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         notes: newNotes,
         codeblocks: newCodeBlocks,
         d3visualizations: newD3Visualizations
-     });
+      });
+
+      // Reset manual positions after state update
+      setTimeout(() => {
+        selectedIds.forEach(selId => {
+          const node = stageRef.current?.findOne('#' + selId);
+          if (node && node.name() === 'stroke') {
+            node.setPosition({ x: 0, y: 0 });
+          }
+        });
+        setIsDraggingOverlay(false);
+        stageRef.current?.batchDraw();
+      }, 0);
+
+      return;
+    }
+
+    // Handle single object drag
+    const id = e.target.id();
+    if (!id) return;
+
+    const isStroke = e.target.name() === 'stroke';
+    let dx = 0, dy = 0;
+
+    if (isStroke) {
+      dx = e.target.x();
+      dy = e.target.y();
+      e.target.position({ x: 0, y: 0 });
+    } else {
+      const original = [...images, ...texts, ...shapes, ...latex, ...codes, ...notes, ...codeblocks, ...d3visualizations].find(o => o.id === id);
+      if (original) {
+        dx = e.target.x() - original.x;
+        dy = e.target.y() - original.y;
+      }
+    }
+
+    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return;
+
+    const newImages = images.map(img => img.id === id ? { ...img, x: img.x + dx, y: img.y + dy } : img);
+    const newTexts = texts.map(txt => txt.id === id ? { ...txt, x: txt.x + dx, y: txt.y + dy } : txt);
+    const newShapes = shapes.map(shp => shp.id === id ? { ...shp, x: shp.x + dx, y: shp.y + dy } : shp);
+    const newLatex = latex.map(l => l.id === id ? { ...l, x: l.x + dx, y: l.y + dy } : l);
+    const newCodes = codes.map(c => c.id === id ? { ...c, x: c.x + dx, y: c.y + dy } : c);
+    const newNotes = notes.map(n => n.id === id ? { ...n, x: n.x + dx, y: n.y + dy } : n);
+    const newCodeBlocks = codeblocks.map(cb => cb.id === id ? { ...cb, x: cb.x + dx, y: cb.y + dy } : cb);
+    const newD3Visualizations = d3visualizations.map(v => v.id === id ? { ...v, x: v.x + dx, y: v.y + dy } : v);
+    const newStrokes = strokes.map(s => {
+      if (s.id === id) {
+        const newPoints = [];
+        for (let i = 0; i < s.points.length; i += 2) {
+          newPoints.push(s.points[i] + dx);
+          newPoints.push(s.points[i + 1] + dy);
+        }
+        return { ...s, points: newPoints };
+      }
+      return s;
+    });
+
+    onUpdate({
+      strokes: newStrokes,
+      images: newImages,
+      texts: newTexts,
+      shapes: newShapes,
+      latex: newLatex,
+      codes: newCodes,
+      notes: newNotes,
+      codeblocks: newCodeBlocks,
+      d3visualizations: newD3Visualizations
+    });
   };
-  
+
   const handleTransformEnd = () => {
-     const newImages = [...images];
-     const newShapes = [...shapes];
-     const newTexts = [...texts];
-     const newLatex = [...latex];
-     const newCodes = [...codes];
-     const newNotes = [...notes];
+    const newImages = [...images];
+    const newShapes = [...shapes];
+    const newTexts = [...texts];
+    const newLatex = [...latex];
+    const newCodes = [...codes];
+    const newNotes = [...notes];
 
-     selectedIds.forEach(id => {
-        const node = stageRef.current?.findOne('#' + id);
-        if (!node) return;
+    selectedIds.forEach(id => {
+      const node = stageRef.current?.findOne('#' + id);
+      if (!node) return;
 
-        const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
-        const rotation = node.rotation();
-        const x = node.x();
-        const y = node.y();
-        
-        const imgIndex = newImages.findIndex(i => i.id === id);
-        if (imgIndex !== -1) {
-           newImages[imgIndex] = {
-              ...newImages[imgIndex],
-              x, y, rotation,
-              width: newImages[imgIndex].width * scaleX,
-              height: newImages[imgIndex].height * scaleY
-           };
-           node.scale({x:1, y:1});
-        }
-        
-        const shpIndex = newShapes.findIndex(s => s.id === id);
-        if (shpIndex !== -1) {
-           const shp = newShapes[shpIndex];
-           if (shp.type === 'rect' || shp.type === 'circle') {
-             newShapes[shpIndex] = {
-                ...shp,
-                x, y, 
-                width: (shp.width || 0) * scaleX,
-                height: (shp.height || 0) * scaleY
-             };
-           }
-           node.scale({x:1, y:1});
-        }
-        
-        const txtIndex = newTexts.findIndex(t => t.id === id);
-        if (txtIndex !== -1) {
-           newTexts[txtIndex] = {
-              ...newTexts[txtIndex],
-              x, y,
-              fontSize: newTexts[txtIndex].fontSize * scaleY
-           };
-           node.scale({x:1, y:1});
-        }
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      const rotation = node.rotation();
+      const x = node.x();
+      const y = node.y();
 
-        const ltIndex = newLatex.findIndex(l => l.id === id);
-        if (ltIndex !== -1) {
-           newLatex[ltIndex] = {
-              ...newLatex[ltIndex],
-              x, y,
-              fontSize: newLatex[ltIndex].fontSize * scaleY
-           };
-           node.scale({x:1, y:1});
-        }
+      const imgIndex = newImages.findIndex(i => i.id === id);
+      if (imgIndex !== -1) {
+        newImages[imgIndex] = {
+          ...newImages[imgIndex],
+          x, y, rotation,
+          width: newImages[imgIndex].width * scaleX,
+          height: newImages[imgIndex].height * scaleY
+        };
+        node.scale({ x: 1, y: 1 });
+      }
 
-        const cdIndex = newCodes.findIndex(c => c.id === id);
-        if (cdIndex !== -1) {
-           newCodes[cdIndex] = {
-              ...newCodes[cdIndex],
-              x, y,
-              width: newCodes[cdIndex].width * scaleX,
-              height: newCodes[cdIndex].height * scaleY,
-              fontSize: newCodes[cdIndex].fontSize * scaleY
-           };
-           node.scale({x:1, y:1});
+      const shpIndex = newShapes.findIndex(s => s.id === id);
+      if (shpIndex !== -1) {
+        const shp = newShapes[shpIndex];
+        if (shp.type === 'rect' || shp.type === 'circle') {
+          newShapes[shpIndex] = {
+            ...shp,
+            x, y,
+            width: (shp.width || 0) * scaleX,
+            height: (shp.height || 0) * scaleY
+          };
         }
+        node.scale({ x: 1, y: 1 });
+      }
 
-        const ntIndex = newNotes.findIndex(n => n.id === id);
-        if (ntIndex !== -1) {
-           newNotes[ntIndex] = {
-              ...newNotes[ntIndex],
-              x, y,
-              width: newNotes[ntIndex].width * scaleX,
-              height: newNotes[ntIndex].height * scaleY
-           };
-           node.scale({x:1, y:1});
-        }
-     });
-     
-     onUpdate({
-        images: newImages, 
-        texts: newTexts, 
-        shapes: newShapes, 
-        latex: newLatex, 
-        codes: newCodes, 
-        notes: newNotes 
-     });
+      const txtIndex = newTexts.findIndex(t => t.id === id);
+      if (txtIndex !== -1) {
+        newTexts[txtIndex] = {
+          ...newTexts[txtIndex],
+          x, y,
+          fontSize: newTexts[txtIndex].fontSize * scaleY
+        };
+        node.scale({ x: 1, y: 1 });
+      }
+
+      const ltIndex = newLatex.findIndex(l => l.id === id);
+      if (ltIndex !== -1) {
+        newLatex[ltIndex] = {
+          ...newLatex[ltIndex],
+          x, y,
+          fontSize: newLatex[ltIndex].fontSize * scaleY
+        };
+        node.scale({ x: 1, y: 1 });
+      }
+
+      const cdIndex = newCodes.findIndex(c => c.id === id);
+      if (cdIndex !== -1) {
+        newCodes[cdIndex] = {
+          ...newCodes[cdIndex],
+          x, y,
+          width: newCodes[cdIndex].width * scaleX,
+          height: newCodes[cdIndex].height * scaleY,
+          fontSize: newCodes[cdIndex].fontSize * scaleY
+        };
+        node.scale({ x: 1, y: 1 });
+      }
+
+      const ntIndex = newNotes.findIndex(n => n.id === id);
+      if (ntIndex !== -1) {
+        newNotes[ntIndex] = {
+          ...newNotes[ntIndex],
+          x, y,
+          width: newNotes[ntIndex].width * scaleX,
+          height: newNotes[ntIndex].height * scaleY
+        };
+        node.scale({ x: 1, y: 1 });
+      }
+    });
+
+    onUpdate({
+      images: newImages,
+      texts: newTexts,
+      shapes: newShapes,
+      latex: newLatex,
+      codes: newCodes,
+      notes: newNotes
+    });
   };
 
   const handleSmartObjectSelect = (e: Konva.KonvaEventObject<MouseEvent>, id: string) => {
-     if (tool !== 'select') return;
-     e.cancelBubble = true; 
-     
-     const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
-     if (isModifier) {
-        if (selectedIds.includes(id)) {
-           setSelectedIds(selectedIds.filter(sid => sid !== id));
-        } else {
-           setSelectedIds([...selectedIds, id]);
-        }
-     } else {
-        if (!selectedIds.includes(id)) {
-           setSelectedIds([id]);
-        }
-     }
+    if (tool !== 'select') return;
+    e.cancelBubble = true;
+
+    const isModifier = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    if (isModifier) {
+      if (selectedIds.includes(id)) {
+        setSelectedIds(selectedIds.filter(sid => sid !== id));
+      } else {
+        setSelectedIds([...selectedIds, id]);
+      }
+    } else {
+      if (!selectedIds.includes(id)) {
+        setSelectedIds([id]);
+      }
+    }
   };
 
   // Helper to get default z-index for object type
@@ -1393,148 +1393,148 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   renderableObjects.sort((a, b) => a.zIndex - b.zIndex);
 
   // Helper to create Board API for a specific code block
-  const createBoardAPI = (codeBlock: CodeBlockObj): BoardAPI => {
+  const createBoardAPI = useCallback((codeBlock: CodeBlockObj): BoardAPI => {
     console.log('[BoardAPI] Creating board API for code block:', codeBlock.id);
     return {
-    // Reading elements
-    getImages: () => images.map(({ type, ...rest }) => rest),
-    getTexts: () => texts.map(({ type, ...rest }) => rest),
-    getShapes: () => {
-      console.log('[BoardAPI] getShapes called, count:', shapes.length);
-      return shapes.map(({ type, ...rest }) => rest);
-    },
-    getLatex: () => latex.map(({ type, ...rest }) => rest),
-    getStrokes: () => strokes,
-    getVisualizations: () => d3visualizations.map(({ type, ...rest }) => rest),
-    getAll: () => ({
-      images: images.map(({ type, ...rest }) => rest),
-      texts: texts.map(({ type, ...rest }) => rest),
-      shapes: shapes.map(({ type, ...rest }) => rest),
-      latex: latex.map(({ type, ...rest }) => rest),
-      strokes: strokes,
-      visualizations: d3visualizations.map(({ type, ...rest }) => rest)
-    }),
+      // Reading elements
+      getImages: () => images.map(({ type, ...rest }) => rest),
+      getTexts: () => texts.map(({ type, ...rest }) => rest),
+      getShapes: () => {
+        console.log('[BoardAPI] getShapes called, count:', shapes.length);
+        return shapes.map(({ type, ...rest }) => rest);
+      },
+      getLatex: () => latex.map(({ type, ...rest }) => rest),
+      getStrokes: () => strokes,
+      getVisualizations: () => d3visualizations.map(({ type, ...rest }) => rest),
+      getAll: () => ({
+        images: images.map(({ type, ...rest }) => rest),
+        texts: texts.map(({ type, ...rest }) => rest),
+        shapes: shapes.map(({ type, ...rest }) => rest),
+        latex: latex.map(({ type, ...rest }) => rest),
+        strokes: strokes,
+        visualizations: d3visualizations.map(({ type, ...rest }) => rest)
+      }),
 
-    // Creating elements
-    addImage: (props) => {
-      const id = `img-${Date.now()}-${Math.random()}`;
-      const newImage: ImageObj = {
-        id,
-        type: 'image',
-        src: props.src || '',
-        x: props.x ?? 0,
-        y: props.y ?? 0,
-        width: props.width ?? 200,
-        height: props.height ?? 200,
-        rotation: props.rotation ?? 0,
-        zIndex: props.zIndex
-      };
-      onUpdate({ images: [...images, newImage] });
-      return id;
-    },
+      // Creating elements
+      addImage: (props) => {
+        const id = `img-${Date.now()}-${Math.random()}`;
+        const newImage: ImageObj = {
+          id,
+          type: 'image',
+          src: props.src || '',
+          x: props.x ?? 0,
+          y: props.y ?? 0,
+          width: props.width ?? 200,
+          height: props.height ?? 200,
+          rotation: props.rotation ?? 0,
+          zIndex: props.zIndex
+        };
+        onUpdate({ images: [...images, newImage] });
+        return id;
+      },
 
-    addText: (props) => {
-      const id = `txt-${Date.now()}-${Math.random()}`;
-      const newText: TextObj = {
-        id,
-        type: 'text',
-        text: props.text || '',
-        x: props.x ?? 0,
-        y: props.y ?? 0,
-        fontSize: props.fontSize ?? 16,
-        color: props.color || '#000000',
-        zIndex: props.zIndex
-      };
-      onUpdate({ texts: [...texts, newText] });
-      return id;
-    },
+      addText: (props) => {
+        const id = `txt-${Date.now()}-${Math.random()}`;
+        const newText: TextObj = {
+          id,
+          type: 'text',
+          text: props.text || '',
+          x: props.x ?? 0,
+          y: props.y ?? 0,
+          fontSize: props.fontSize ?? 16,
+          color: props.color || '#000000',
+          zIndex: props.zIndex
+        };
+        onUpdate({ texts: [...texts, newText] });
+        return id;
+      },
 
-    addShape: (props) => {
-      console.log('[BoardAPI] addShape called with:', props);
-      const id = `shp-${Date.now()}-${Math.random()}`;
-      const shapeType = (props as any).type || 'rect';
-      const newShape: ShapeObj = {
-        id,
-        type: shapeType,
-        x: props.x ?? 0,
-        y: props.y ?? 0,
-        width: props.width ?? 100,
-        height: props.height ?? 100,
-        points: props.points,
-        color: props.color || '#000000',
-        strokeWidth: props.strokeWidth ?? 2,
-        zIndex: props.zIndex
-      };
-      console.log('[BoardAPI] Creating shape:', newShape);
-      console.log('[BoardAPI] Current shapes count:', shapes.length);
-      onUpdate({ shapes: [...shapes, newShape] });
-      console.log('[BoardAPI] Update called, returning ID:', id);
-      return id;
-    },
+      addShape: (props) => {
+        console.log('[BoardAPI] addShape called with:', props);
+        const id = `shp-${Date.now()}-${Math.random()}`;
+        const shapeType = (props as any).type || 'rect';
+        const newShape: ShapeObj = {
+          id,
+          type: shapeType,
+          x: props.x ?? 0,
+          y: props.y ?? 0,
+          width: props.width ?? 100,
+          height: props.height ?? 100,
+          points: props.points,
+          color: props.color || '#000000',
+          strokeWidth: props.strokeWidth ?? 2,
+          zIndex: props.zIndex
+        };
+        console.log('[BoardAPI] Creating shape:', newShape);
+        console.log('[BoardAPI] Current shapes count:', shapes.length);
+        onUpdate({ shapes: [...shapes, newShape] });
+        console.log('[BoardAPI] Update called, returning ID:', id);
+        return id;
+      },
 
-    addLatex: (props) => {
-      const id = `ltx-${Date.now()}-${Math.random()}`;
-      const newLatex: LatexObj = {
-        id,
-        type: 'latex',
-        text: props.text || '',
-        x: props.x ?? 0,
-        y: props.y ?? 0,
-        fontSize: props.fontSize ?? 16,
-        color: props.color || '#000000',
-        zIndex: props.zIndex
-      };
-      onUpdate({ latex: [...latex, newLatex] });
-      return id;
-    },
+      addLatex: (props) => {
+        const id = `ltx-${Date.now()}-${Math.random()}`;
+        const newLatex: LatexObj = {
+          id,
+          type: 'latex',
+          text: props.text || '',
+          x: props.x ?? 0,
+          y: props.y ?? 0,
+          fontSize: props.fontSize ?? 16,
+          color: props.color || '#000000',
+          zIndex: props.zIndex
+        };
+        onUpdate({ latex: [...latex, newLatex] });
+        return id;
+      },
 
-    // Updating elements
-    updateElement: (id, updates) => {
-      // Find and update the element across all arrays
-      const newImages = images.map(img => img.id === id ? { ...img, ...updates } : img);
-      const newTexts = texts.map(txt => txt.id === id ? { ...txt, ...updates } : txt);
-      const newShapes = shapes.map(shp => shp.id === id ? { ...shp, ...updates } : shp);
-      const newLatex = latex.map(ltx => ltx.id === id ? { ...ltx, ...updates } : ltx);
-      const newStrokes = strokes.map(str => str.id === id ? { ...str, ...updates } : str);
-      const newVizs = d3visualizations.map(viz => viz.id === id ? { ...viz, ...updates } : viz);
+      // Updating elements
+      updateElement: (id, updates) => {
+        // Find and update the element across all arrays
+        const newImages = images.map(img => img.id === id ? { ...img, ...updates } : img);
+        const newTexts = texts.map(txt => txt.id === id ? { ...txt, ...updates } : txt);
+        const newShapes = shapes.map(shp => shp.id === id ? { ...shp, ...updates } : shp);
+        const newLatex = latex.map(ltx => ltx.id === id ? { ...ltx, ...updates } : ltx);
+        const newStrokes = strokes.map(str => str.id === id ? { ...str, ...updates } : str);
+        const newVizs = d3visualizations.map(viz => viz.id === id ? { ...viz, ...updates } : viz);
 
-      onUpdate({
-        images: newImages,
-        texts: newTexts,
-        shapes: newShapes,
-        latex: newLatex,
-        strokes: newStrokes,
-        d3visualizations: newVizs
-      });
-    },
+        onUpdate({
+          images: newImages,
+          texts: newTexts,
+          shapes: newShapes,
+          latex: newLatex,
+          strokes: newStrokes,
+          d3visualizations: newVizs
+        });
+      },
 
-    // Deleting elements
-    deleteElement: (id) => {
-      onUpdate({
-        images: images.filter(img => img.id !== id),
-        texts: texts.filter(txt => txt.id !== id),
-        shapes: shapes.filter(shp => shp.id !== id),
-        latex: latex.filter(ltx => ltx.id !== id),
-        strokes: strokes.filter(str => str.id !== id),
-        d3visualizations: d3visualizations.filter(viz => viz.id !== id)
-      });
-    },
+      // Deleting elements
+      deleteElement: (id) => {
+        onUpdate({
+          images: images.filter(img => img.id !== id),
+          texts: texts.filter(txt => txt.id !== id),
+          shapes: shapes.filter(shp => shp.id !== id),
+          latex: latex.filter(ltx => ltx.id !== id),
+          strokes: strokes.filter(str => str.id !== id),
+          d3visualizations: d3visualizations.filter(viz => viz.id !== id)
+        });
+      },
 
-    // Utility
-    getViewport: () => ({
-      x: viewPos.x,
-      y: viewPos.y,
-      zoom: zoom
-    }),
+      // Utility
+      getViewport: () => ({
+        x: viewPos.x,
+        y: viewPos.y,
+        zoom: zoom
+      }),
 
-    getCodeBlockPosition: () => ({
-      x: codeBlock.x,
-      y: codeBlock.y,
-      width: codeBlock.width,
-      height: codeBlock.height
-    })
-  };
-  };
+      getCodeBlockPosition: () => ({
+        x: codeBlock.x,
+        y: codeBlock.y,
+        width: codeBlock.width,
+        height: codeBlock.height
+      })
+    };
+  }, [images, texts, shapes, latex, strokes, d3visualizations, onUpdate]);
 
   // Render helper function
   const renderObject = (obj: RenderableObject): JSX.Element | null => {
@@ -1810,33 +1810,39 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           onUpdate={(updates) => {
             console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
 
+            let newAnimations = animations;
+            let newVizs = d3visualizations;
+            const cleanUpdates = { ...updates };
+
             // Handle programmatic animation creation
             if ((updates as any).__programmaticAnimation) {
               const newAnim = (updates as any).__programmaticAnimation;
-              const newAnimations = animations
-                .filter(a => a.id !== newAnim.id)
+              // Remove ANY existing animation for this code block (or by ID) to ensure replacement
+              newAnimations = animations
+                .filter(a => a.codeBlockId !== newAnim.codeBlockId && a.id !== newAnim.id)
                 .concat(newAnim);
 
-              const cleanUpdates = { ...updates };
               delete (cleanUpdates as any).__programmaticAnimation;
-
-              const newCodeBlocks = codeblocks.map(block =>
-                block.id === cb.id ? { ...block, ...cleanUpdates } : block
-              );
-
-              onUpdate({
-                codeblocks: newCodeBlocks,
-                animations: newAnimations
-              });
-            } else {
-              const newCodeBlocks = codeblocks.map(block =>
-                block.id === cb.id ? { ...block, ...updates } : block
-              );
-              console.log('[Whiteboard] Updating with codeblocks count:', newCodeBlocks.length);
-              onUpdate({
-                codeblocks: newCodeBlocks
-              });
             }
+
+            // Handle visualization content update
+            if ((updates as any).__visualizationUpdate) {
+              const vizUpdate = (updates as any).__visualizationUpdate;
+              newVizs = d3visualizations.map(v =>
+                v.id === vizUpdate.id ? { ...v, ...vizUpdate } : v
+              );
+              delete (cleanUpdates as any).__visualizationUpdate;
+            }
+
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === cb.id ? { ...block, ...cleanUpdates } : block
+            );
+
+            onUpdate({
+              codeblocks: newCodeBlocks,
+              animations: newAnimations,
+              d3visualizations: newVizs
+            });
           }}
           onCreateVisualization={(viz, codeBlockUpdates) => {
             console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
@@ -1953,12 +1959,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             const newVizs = d3visualizations.map(v =>
               v.id === viz.id
                 ? {
-                    ...v,
-                    controlValues: {
-                      ...v.controlValues,
-                      [controlLabel]: value
-                    }
+                  ...v,
+                  controlValues: {
+                    ...v.controlValues,
+                    [controlLabel]: value
                   }
+                }
                 : v
             );
             onUpdate({ d3visualizations: newVizs });
@@ -2020,46 +2026,46 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         e.evt.preventDefault();
         const stage = e.target.getStage();
         if (!stage) return;
-        
+
         if (e.evt.ctrlKey || e.evt.metaKey) {
-           const scaleBy = 1.1;
-           const oldScale = stage.scaleX();
-           const pointer = stage.getPointerPosition();
-           if(!pointer) return;
-           const mousePointTo = {
-             x: (pointer.x - stage.x()) / oldScale,
-             y: (pointer.y - stage.y()) / oldScale,
-           };
-           const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
-           
-           setZoom(newScale);
-           
-           stage.scale({ x: newScale, y: newScale });
-           const newPos = {
-             x: pointer.x - mousePointTo.x * newScale,
-             y: pointer.y - mousePointTo.y * newScale,
-           };
-           stage.position(newPos);
-           setViewPos(newPos);
+          const scaleBy = 1.1;
+          const oldScale = stage.scaleX();
+          const pointer = stage.getPointerPosition();
+          if (!pointer) return;
+          const mousePointTo = {
+            x: (pointer.x - stage.x()) / oldScale,
+            y: (pointer.y - stage.y()) / oldScale,
+          };
+          const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+
+          setZoom(newScale);
+
+          stage.scale({ x: newScale, y: newScale });
+          const newPos = {
+            x: pointer.x - mousePointTo.x * newScale,
+            y: pointer.y - mousePointTo.y * newScale,
+          };
+          stage.position(newPos);
+          setViewPos(newPos);
         } else {
-           const dx = -e.evt.deltaX;
-           const dy = -e.evt.deltaY;
-           const pos = stage.position();
-           const newPos = { x: pos.x + dx, y: pos.y + dy };
-           stage.position(newPos);
-           setViewPos(newPos);
+          const dx = -e.evt.deltaX;
+          const dy = -e.evt.deltaY;
+          const pos = stage.position();
+          const newPos = { x: pos.x + dx, y: pos.y + dy };
+          stage.position(newPos);
+          setViewPos(newPos);
         }
       }}
     >
       <Layer>
-         <Background 
-            type={background} 
-            width={window.innerWidth} 
-            height={window.innerHeight} 
-            x={viewPos.x} 
-            y={viewPos.y} 
-            scale={zoom}
-         />
+        <Background
+          type={background}
+          width={window.innerWidth}
+          height={window.innerHeight}
+          x={viewPos.x}
+          y={viewPos.y}
+          scale={zoom}
+        />
       </Layer>
 
       <Layer>
@@ -2068,42 +2074,42 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
         {/* Selection UI elements back in main layer */}
         {selectedIds.length > 0 && selectionOverlay && (
-           <Rect
-              name="selection-overlay"
-              x={selectionOverlay.x}
-              y={selectionOverlay.y}
-              width={selectionOverlay.width}
-              height={selectionOverlay.height}
-              fill="rgba(0, 123, 255, 0.05)"
-              stroke="rgba(0, 123, 255, 0.4)"
-              strokeWidth={1}
-              dash={[4, 4]}
-              draggable={tool === 'select'}
-              onDragStart={handleDragStart}
-              onDragMove={handleDragMove}
-              onDragEnd={handleDragEnd}
-           />
+          <Rect
+            name="selection-overlay"
+            x={selectionOverlay.x}
+            y={selectionOverlay.y}
+            width={selectionOverlay.width}
+            height={selectionOverlay.height}
+            fill="rgba(0, 123, 255, 0.05)"
+            stroke="rgba(0, 123, 255, 0.4)"
+            strokeWidth={1}
+            dash={[4, 4]}
+            draggable={tool === 'select'}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+          />
         )}
 
         {selectionBox && (
-           <Rect
-              x={selectionBox.x}
-              y={selectionBox.y}
-              width={selectionBox.width}
-              height={selectionBox.height}
-              fill="rgba(0,0,255,0.1)"
-              stroke="blue"
-              strokeWidth={1}
-              listening={false}
-           />
+          <Rect
+            x={selectionBox.x}
+            y={selectionBox.y}
+            width={selectionBox.width}
+            height={selectionBox.height}
+            fill="rgba(0,0,255,0.1)"
+            stroke="blue"
+            strokeWidth={1}
+            listening={false}
+          />
         )}
 
         <Transformer
-           ref={transformerRef}
-           boundBoxFunc={(oldBox, newBox) => {
-             if (newBox.width < 5 || newBox.height < 5) return oldBox;
-             return newBox;
-           }}
+          ref={transformerRef}
+          boundBoxFunc={(oldBox, newBox) => {
+            if (newBox.width < 5 || newBox.height < 5) return oldBox;
+            return newBox;
+          }}
         />
       </Layer>
 

@@ -74,8 +74,6 @@ export const A4Grid: React.FC<A4GridProps> = ({
     for (let col = startCol; col < endCol; col++) {
       const x = col * A4_WIDTH + 20;
       const y = row * A4_HEIGHT + 20;
-      const pageNum = row * (endCol - startCol + 1) + (col - startCol + 1);
-
       labels.push(
         <Text
           key={`label-${row}-${col}`}

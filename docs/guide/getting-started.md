@@ -2,36 +2,17 @@
 
 Welcome to Whiteboard! This guide will help you get up and running in minutes.
 
-## Choose Your Platform
+## Installation
 
-Whiteboard is available in two versions:
+Download and install the Whiteboard desktop app for advanced features like dual-window presentation mode and OBS integration.
 
-### Web Version (Quick Start)
-Visit the [online demo](https://TheGhoul21.github.io/whiteboard/) to start drawing immediately in your browser. No installation required!
-
-**Pros:**
-- Instant access
-- Works on any device
-- No setup required
-
-**Cons:**
-- No dual-window presentation mode
-- No OBS integration features
-- Limited to single browser window
-
-### Desktop App (Recommended for Recording)
-Download the native desktop app for advanced features like dual-window presentation mode and OBS integration.
-
-**Pros:**
+**Features:**
 - Dual-window presentation mode
 - Laser pointer & spotlight tools
 - OBS integration
 - Better performance
 - Offline access
-
-**Cons:**
-- Requires installation
-- Desktop only
+- Cross-platform (macOS, Windows, Linux)
 
 [Install Desktop App →](/desktop/installation)
 

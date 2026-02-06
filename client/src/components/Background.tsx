@@ -14,12 +14,12 @@ interface BackgroundProps {
 export const Background: React.FC<BackgroundProps> = ({ type, width, height, x, y, scale }) => {
   // We need to render a grid/pattern that covers the visible area.
   // We calculate the visible bounds in "scene" coordinates.
-  
+
   const startX = -x / scale;
   const startY = -y / scale;
   const viewW = width / scale;
   const viewH = height / scale;
-  
+
   // Padding to avoid flickering edges
   const pad = 100;
   const visibleX = startX - pad;
@@ -27,9 +27,10 @@ export const Background: React.FC<BackgroundProps> = ({ type, width, height, x, 
   const visibleW = viewW + pad * 2;
   const visibleH = viewH + pad * 2;
 
-  const bgFill = type === 'black' ? '#1a1a1a' : '#ffffff';
-  const gridColor = type === 'black' ? '#333' : '#e5e7eb';
-  const lineColor = type === 'black' ? '#333' : '#e0e0e0';
+  const isDark = type === 'black' || type === 'black-grid' || type === 'black-lines';
+  const bgFill = isDark ? '#1a1a1a' : '#ffffff';
+  const gridColor = isDark ? '#333' : '#e5e7eb';
+  const lineColor = isDark ? '#333' : '#e0e0e0';
   
   // Grid settings
   const gridSize = 50;
@@ -129,8 +130,8 @@ export const Background: React.FC<BackgroundProps> = ({ type, width, height, x, 
         height={visibleH}
         fill={bgFill}
       />
-      {type === 'grid' && renderGrid()}
-      {type === 'lines' && renderLines()}
+      {(type === 'grid' || type === 'black-grid') && renderGrid()}
+      {(type === 'lines' || type === 'black-lines') && renderLines()}
       {type === 'dots' && renderDots()}
     </Group>
   );

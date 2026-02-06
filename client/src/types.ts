@@ -5,7 +5,7 @@ export interface Point {
 
 export type ToolType = 'select' | 'hand' | 'pen' | 'smooth-pen' | 'highlighter' | 'eraser' | 'laser' | 'pointer' | 'text' | 'rect' | 'circle' | 'arrow';
 
-export type BackgroundType = 'white' | 'black' | 'grid' | 'lines' | 'dots';
+export type BackgroundType = 'white' | 'black' | 'grid' | 'lines' | 'dots' | 'black-grid' | 'black-lines';
 
 export interface Stroke {
   id: string;

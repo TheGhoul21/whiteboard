@@ -653,7 +653,7 @@ svg.append('path')
 
         // Number keys for primary tools
         if (e.key === '1') { e.preventDefault(); setTool('select'); return; }
-        if (e.key === '2') { e.preventDefault(); setTool('pen'); return; }
+        if (e.key === '2') { e.preventDefault(); setTool('smooth-pen'); return; }
         if (e.key === '3') { e.preventDefault(); setTool('highlighter'); return; }
         if (e.key === '4') { e.preventDefault(); setTool('laser'); return; }
         if (e.key === '5') { e.preventDefault(); setTool('pointer'); return; }
@@ -1091,7 +1091,8 @@ svg.append('path')
   const showMinimap = !presentationMode && (tool === 'hand' || isSpacebarPressed);
 
   // Container background should match the whiteboard background
-  const containerBg = background === 'black' ? 'bg-[#1a1a1a]' : 'bg-white';
+  const isDarkBg = background === 'black' || background === 'black-grid' || background === 'black-lines';
+  const containerBg = isDarkBg ? 'bg-[#1a1a1a]' : 'bg-white';
 
   return (
     <div className={`w-full h-screen overflow-hidden ${containerBg}`}>

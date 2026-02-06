@@ -81,7 +81,30 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const btnClass = (t: ToolType) =>
     `p-2 rounded transition-colors ${tool === t ? 'bg-blue-100 text-blue-600 shadow-inner' : 'hover:bg-gray-100 text-gray-700'}`;
 
-  const currentColors = background === 'black' ? DARK_COLORS : LIGHT_COLORS;
+  const isDark = background === 'black' || background === 'black-grid' || background === 'black-lines';
+  const currentColors = isDark ? DARK_COLORS : LIGHT_COLORS;
+
+  const handleBackgroundChange = (newBg: BackgroundType) => {
+    // When switching between light and dark backgrounds, swap color if needed
+    const wasLight = background === 'white' || background === 'grid' || background === 'lines' || background === 'dots';
+    const willBeDark = newBg === 'black' || newBg === 'black-grid' || newBg === 'black-lines';
+
+    if (wasLight && willBeDark) {
+      // Switching from light to dark - swap color index
+      const lightIndex = LIGHT_COLORS.indexOf(color);
+      if (lightIndex !== -1) {
+        setColor(DARK_COLORS[lightIndex]);
+      }
+    } else if (!wasLight && !willBeDark) {
+      // Switching from dark to light - swap color index
+      const darkIndex = DARK_COLORS.indexOf(color);
+      if (darkIndex !== -1) {
+        setColor(LIGHT_COLORS[darkIndex]);
+      }
+    }
+
+    setBackground(newBg);
+  };
 
   const handleZoomReset = () => {
     // Calculate the center point of the current viewport in canvas coordinates
@@ -96,6 +119,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
     setZoom(1);
     setViewPos(newViewPos);
+  };
+
+  const handleGoToOrigin = () => {
+    setViewPos({ x: 0, y: 0 });
+    setZoom(1);
   };
 
   return (
@@ -210,17 +238,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Backgrounds */}
       <div className="flex gap-1 border-r pr-3 border-gray-300">
-         <button className={`p-2 rounded ${background === 'white' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => setBackground('white')} title="White Background">
+         <button className={`p-2 rounded ${background === 'white' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('white')} title="White Background">
             <LayoutTemplate size={18} />
          </button>
-         <button className={`p-2 rounded ${background === 'grid' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => setBackground('grid')} title="Grid Pattern">
+         <button className={`p-2 rounded ${background === 'grid' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('grid')} title="Light Grid">
             <Grid size={18} />
          </button>
-         <button className={`p-2 rounded ${background === 'lines' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => setBackground('lines')} title="Notebook Lines">
+         <button className={`p-2 rounded ${background === 'lines' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('lines')} title="Light Lines">
             <FileText size={18} />
          </button>
-         <button className={`p-2 rounded ${background === 'black' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => setBackground('black')} title="Dark Mode">
+         <button className={`p-2 rounded ${background === 'black' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('black')} title="Dark Background">
             <div className="w-4 h-4 bg-black rounded border border-gray-400"></div>
+         </button>
+         <button className={`p-2 rounded ${background === 'black-grid' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('black-grid')} title="Dark Grid">
+            <div className="w-4 h-4 bg-black rounded border border-gray-400 relative">
+              <div className="absolute inset-0 grid grid-cols-2 gap-px">
+                <div className="border-r border-b border-gray-600"></div>
+                <div className="border-b border-gray-600"></div>
+                <div className="border-r border-gray-600"></div>
+                <div></div>
+              </div>
+            </div>
+         </button>
+         <button className={`p-2 rounded ${background === 'black-lines' ? 'bg-gray-200' : 'hover:bg-gray-100'}`} onClick={() => handleBackgroundChange('black-lines')} title="Dark Lines">
+            <div className="w-4 h-4 bg-black rounded border border-gray-400 relative">
+              <div className="absolute inset-0 flex flex-col justify-around py-px">
+                <div className="h-px bg-gray-600"></div>
+                <div className="h-px bg-gray-600"></div>
+              </div>
+            </div>
          </button>
       </div>
 
@@ -233,7 +279,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
            {Math.round(zoom * 100)}%
         </button>
-        
+        <button
+           onClick={handleGoToOrigin}
+           className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+           title="Go to Origin (0, 0)"
+        >
+           0,0
+        </button>
+
         <div className="w-px h-6 bg-gray-300 mx-1"></div>
 
         <PDFImporter onImport={onImportImages} />

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe, BoardAPI } from '../types';
-import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, getSmoothLinePath } from '../utils/stroke';
+import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, getSmoothLinePath, getRoughRectPath, getRoughCirclePath, getRoughArrowPath } from '../utils/stroke';
 import { Background } from './Background';
 import { LatexObject, CodeObject, NoteObject } from './SmartObjects';
 import { CodeBlockObject } from './CodeBlockObject';
@@ -1692,49 +1692,58 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (type === 'shape') {
       const shp = data as ShapeObj;
       if (shp.type === 'rect') {
+        const pathData = getRoughRectPath(
+          shp.x,
+          shp.y,
+          shp.width || 100,
+          shp.height || 100,
+          shp.strokeWidth
+        );
         return (
-          <Rect
+          <Path
             key={shp.id}
             id={shp.id}
             name="shape"
-            x={shp.x}
-            y={shp.y}
-            width={shp.width}
-            height={shp.height}
-            stroke={shp.color}
-            strokeWidth={shp.strokeWidth}
+            data={pathData}
+            fill={shp.color}
             draggable={tool === 'select' && !selectedIds.includes(shp.id)}
             onDragEnd={handleDragEnd}
             onTransformEnd={handleTransformEnd}
           />
         );
       } else if (shp.type === 'circle') {
+        const radius = Math.abs((shp.width || 10) / 2);
+        const pathData = getRoughCirclePath(
+          shp.x + radius,
+          shp.y + radius,
+          radius,
+          shp.strokeWidth
+        );
         return (
-          <Circle
+          <Path
             key={shp.id}
             id={shp.id}
             name="shape"
-            x={shp.x}
-            y={shp.y}
-            radius={Math.abs((shp.width || 10) / 2)}
-            stroke={shp.color}
-            strokeWidth={shp.strokeWidth}
+            data={pathData}
+            fill={shp.color}
             draggable={tool === 'select' && !selectedIds.includes(shp.id)}
             onDragEnd={handleDragEnd}
             onTransformEnd={handleTransformEnd}
           />
         );
       } else if (shp.type === 'arrow') {
+        const pathData = getRoughArrowPath(
+          shp.x,
+          shp.y,
+          shp.points || [0, 0, 100, 100],
+          shp.strokeWidth
+        );
         return (
-          <Arrow
+          <Path
             key={shp.id}
             id={shp.id}
             name="shape"
-            x={shp.x}
-            y={shp.y}
-            points={shp.points || []}
-            stroke={shp.color}
-            strokeWidth={shp.strokeWidth}
+            data={pathData}
             fill={shp.color}
             draggable={tool === 'select' && !selectedIds.includes(shp.id)}
             onDragEnd={handleDragEnd}

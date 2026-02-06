@@ -279,6 +279,109 @@ export function flatToPoints(flat: number[]): number[][] {
   return points;
 }
 
+// Generate a rough, hand-drawn rectangle path
+export function getRoughRectPath(x: number, y: number, width: number, height: number, strokeWidth: number): string {
+  // Add roughness - slight deviations at corners and edges
+  const roughness = strokeWidth * 0.5;
+  const jitter = () => (Math.random() - 0.5) * roughness;
+
+  // Top edge
+  const topPoints: number[][] = [];
+  const steps = Math.max(8, Math.floor(width / 15));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    topPoints.push([x + width * t + jitter(), y + jitter()]);
+  }
+
+  // Right edge
+  const rightPoints: number[][] = [];
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    rightPoints.push([x + width + jitter(), y + height * t + jitter()]);
+  }
+
+  // Bottom edge (reverse)
+  const bottomPoints: number[][] = [];
+  for (let i = steps - 1; i >= 0; i--) {
+    const t = i / steps;
+    bottomPoints.push([x + width * t + jitter(), y + height + jitter()]);
+  }
+
+  // Left edge (reverse)
+  const leftPoints: number[][] = [];
+  for (let i = steps - 1; i > 0; i--) {
+    const t = i / steps;
+    leftPoints.push([x + jitter(), y + height * t + jitter()]);
+  }
+
+  const allPoints = [...topPoints, ...rightPoints, ...bottomPoints, ...leftPoints];
+  return getCalligraphyPath(allPoints, strokeWidth, true);
+}
+
+// Generate a rough, hand-drawn circle path
+export function getRoughCirclePath(cx: number, cy: number, radius: number, strokeWidth: number): string {
+  const roughness = strokeWidth * 0.4;
+  const points: number[][] = [];
+  const segments = Math.max(24, Math.floor(radius / 3));
+
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const jitter = (Math.random() - 0.5) * roughness;
+    const r = radius + jitter;
+    const x = cx + Math.cos(angle) * r;
+    const y = cy + Math.sin(angle) * r;
+    points.push([x, y]);
+  }
+
+  return getCalligraphyPath(points, strokeWidth, true);
+}
+
+// Generate a rough, hand-drawn arrow path
+export function getRoughArrowPath(x: number, y: number, points: number[], strokeWidth: number): string {
+  if (points.length < 4) return '';
+
+  const endX = x + points[2];
+  const endY = y + points[3];
+  const startX = x + points[0];
+  const startY = y + points[1];
+
+  // Main arrow shaft with roughness
+  const roughness = strokeWidth * 0.5;
+  const linePoints: number[][] = [];
+  const steps = Math.max(8, Math.floor(Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2) / 15));
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const jitter = () => (Math.random() - 0.5) * roughness;
+    linePoints.push([
+      startX + (endX - startX) * t + jitter(),
+      startY + (endY - startY) * t + jitter()
+    ]);
+  }
+
+  const shaftPath = getCalligraphyPath(linePoints, strokeWidth, true);
+
+  // Arrow head
+  const angle = Math.atan2(endY - startY, endX - startX);
+  const headLength = strokeWidth * 3;
+  const headAngle = Math.PI / 6;
+
+  const arrowHead1: number[][] = [
+    [endX, endY],
+    [endX - headLength * Math.cos(angle - headAngle), endY - headLength * Math.sin(angle - headAngle)]
+  ];
+
+  const arrowHead2: number[][] = [
+    [endX, endY],
+    [endX - headLength * Math.cos(angle + headAngle), endY - headLength * Math.sin(angle + headAngle)]
+  ];
+
+  const head1Path = getCalligraphyPath(arrowHead1, strokeWidth, false);
+  const head2Path = getCalligraphyPath(arrowHead2, strokeWidth, false);
+
+  return `${shaftPath} ${head1Path} ${head2Path}`;
+}
+
 // Smooth points using moving average for more natural curves
 export function smoothPoints(flat: number[], windowSize: number = 3): number[] {
   if (flat.length < windowSize * 2) return flat;

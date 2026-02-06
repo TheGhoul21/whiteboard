@@ -1,5 +1,6 @@
 {
   "devDependencies": {
-    "happy-dom": "^20.5.0"
+    "happy-dom": "^20.5.0",
+    "vitepress": "^1.6.4"
   }
 }

@@ -190,6 +190,71 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     };
   };
 
+  const detectCircleShape = (points: number[]): { isCircle: boolean, center?: { x: number, y: number }, radius?: number } => {
+    if (points.length < 10) return { isCircle: false }; // Need at least 5 points
+
+    // Check if stroke is closed (start and end points are close)
+    const startX = points[0];
+    const startY = points[1];
+    const endX = points[points.length - 2];
+    const endY = points[points.length - 1];
+    const closingDistance = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+
+    // Get bounding box to estimate center
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const expectedRadius = (width + height) / 4; // Average of width and height radii
+
+    // Must be closed (end near start, within 15% of expected diameter)
+    if (closingDistance > expectedRadius * 0.30) return { isCircle: false };
+
+    // Must be roughly circular (width and height similar, within 30% difference)
+    const aspectRatio = Math.min(width, height) / Math.max(width, height);
+    if (aspectRatio < 0.7) return { isCircle: false };
+
+    // Check if points are roughly equidistant from center
+    const distances: number[] = [];
+    for (let i = 0; i < points.length; i += 2) {
+      const dist = Math.sqrt((points[i] - centerX) ** 2 + (points[i + 1] - centerY) ** 2);
+      distances.push(dist);
+    }
+
+    const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
+
+    // Calculate variance - how much do distances deviate from average?
+    let variance = 0;
+    distances.forEach(dist => {
+      variance += (dist - avgDistance) ** 2;
+    });
+    variance /= distances.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Points should be relatively consistent distance from center
+    // Standard deviation should be less than 20% of the average distance
+    const isConsistentRadius = stdDev < avgDistance * 0.20;
+
+    // Minimum size check
+    const minSize = 20;
+
+    const isCircle = isConsistentRadius && expectedRadius > minSize;
+
+    return {
+      isCircle,
+      center: isCircle ? { x: centerX, y: centerY } : undefined,
+      radius: isCircle ? expectedRadius : undefined
+    };
+  };
+
   // Helper to convert hex color to URL-encoded format for SVG
   const encodeColor = (color: string): string => {
     return color.replace('#', '%23');
@@ -1009,16 +1074,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (isDrawing.current && (tool === 'pen' || tool === 'smooth-pen')) {
       const lastStroke = strokes[strokes.length - 1];
       if (lastStroke && lastStroke.points.length > 10) {
-        const detection = detectSquareShape(lastStroke.points);
-        if (detection.isSquare && detection.bounds) {
+        const squareDetection = detectSquareShape(lastStroke.points);
+        if (squareDetection.isSquare && squareDetection.bounds) {
           // Remove the stroke and create a perfect rectangle shape
           const newShape: ShapeObj = {
             id: Date.now().toString(),
             type: 'rect',
-            x: detection.bounds.x,
-            y: detection.bounds.y,
-            width: detection.bounds.width,
-            height: detection.bounds.height,
+            x: squareDetection.bounds.x,
+            y: squareDetection.bounds.y,
+            width: squareDetection.bounds.width,
+            height: squareDetection.bounds.height,
             points: [0, 0, 0, 0],
             color: lastStroke.color,
             strokeWidth: lastStroke.size
@@ -1027,6 +1092,27 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             strokes: strokes.slice(0, -1), // Remove the rough stroke
             shapes: [...shapes, newShape]   // Add perfect rectangle
           }, true);
+        } else {
+          // If not a square, try circle detection
+          const circleDetection = detectCircleShape(lastStroke.points);
+          if (circleDetection.isCircle && circleDetection.center && circleDetection.radius) {
+            // Remove the stroke and create a perfect circle shape
+            const newShape: ShapeObj = {
+              id: Date.now().toString(),
+              type: 'circle',
+              x: circleDetection.center.x - circleDetection.radius,
+              y: circleDetection.center.y - circleDetection.radius,
+              width: circleDetection.radius * 2,
+              height: circleDetection.radius * 2,
+              points: [0, 0, 0, 0],
+              color: lastStroke.color,
+              strokeWidth: lastStroke.size
+            };
+            onUpdate({
+              strokes: strokes.slice(0, -1), // Remove the rough stroke
+              shapes: [...shapes, newShape]   // Add perfect circle
+            }, true);
+          }
         }
       }
     }

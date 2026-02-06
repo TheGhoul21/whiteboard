@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type { D3VisualizationObj, CodeBlockObj } from '../types';
 
 // Mock the parameter isolation logic
@@ -195,7 +195,7 @@ describe('Parameter Isolation', () => {
     it('should handle code block without controls', () => {
       mockCodeBlock.controls = undefined;
 
-      const hasCustomParams = mockCodeBlock.controls?.some(() => true);
+      const hasCustomParams = mockCodeBlock.controls?.some(() => true) ?? undefined;
       expect(hasCustomParams).toBeUndefined();
     });
   });

@@ -202,7 +202,7 @@ export class FrameCache {
    */
   getMemoryUsage(): number {
     let size = 0;
-    for (const [key, value] of this.frames) {
+    for (const [_key, value] of this.frames) {
       size += 8; // key (number)
       size += JSON.stringify(value).length * 2; // rough estimate
     }

@@ -4,9 +4,9 @@ import type { Animation } from '../types';
 
 describe('AnimationRuntime', () => {
   let animation: Animation;
-  let onFrame: ReturnType<typeof vi.fn>;
-  let onComplete: ReturnType<typeof vi.fn>;
-  let onPause: ReturnType<typeof vi.fn>;
+  let onFrame: (values: Record<string, any>, frameIndex: number) => void;
+  let onComplete: () => void;
+  let onPause: () => void;
 
   beforeEach(() => {
     animation = {

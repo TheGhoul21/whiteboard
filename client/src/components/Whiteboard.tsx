@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Arrow, Path } from 'react-konva';
+import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe, BoardAPI } from '../types';
 import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, getSmoothLinePath, getRoughRectPath, getRoughCirclePath, getRoughArrowPath } from '../utils/stroke';
@@ -26,7 +26,7 @@ interface WhiteboardProps {
   animations: Animation[];
   background: BackgroundType;
   onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }>, overwrite?: boolean) => void;
-  stageRef: React.RefObject<Konva.Stage | null>;
+  stageRef: React.RefObject<Konva.Stage>;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
   zoom: number;
@@ -50,7 +50,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   notes = [],
   codeblocks = [],
   d3visualizations = [],
-  animations = [],
   background,
   onUpdate,
   stageRef,

@@ -1,18 +1,27 @@
 import '@testing-library/jest-dom';
 
+// Declare global types for test environment
+declare global {
+  var requestAnimationFrame: (callback: FrameRequestCallback) => number;
+  var cancelAnimationFrame: (id: number) => void;
+  var performance: {
+    now: () => number;
+  };
+}
+
 // Mock requestAnimationFrame for tests
-global.requestAnimationFrame = (callback: FrameRequestCallback) => {
+globalThis.requestAnimationFrame = (callback: FrameRequestCallback) => {
   return setTimeout(() => callback(performance.now()), 16) as unknown as number;
 };
 
-global.cancelAnimationFrame = (id: number) => {
+globalThis.cancelAnimationFrame = (id: number) => {
   clearTimeout(id);
 };
 
 // Mock performance.now
-if (!global.performance) {
-  (global as any).performance = {};
+if (!globalThis.performance) {
+  (globalThis as any).performance = {};
 }
-if (!global.performance.now) {
-  global.performance.now = () => Date.now();
+if (!globalThis.performance.now) {
+  globalThis.performance.now = () => Date.now();
 }

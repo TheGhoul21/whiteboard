@@ -19,6 +19,8 @@ interface ToolbarProps {
   setBackground: (bg: BackgroundType) => void;
   zoom: number;
   setZoom: (zoom: number) => void;
+  viewPos: { x: number; y: number };
+  setViewPos: (pos: { x: number; y: number }) => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -64,6 +66,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   setBackground,
   zoom,
   setZoom,
+  viewPos,
+  setViewPos,
   canUndo,
   canRedo,
   onUndo,
@@ -74,10 +78,25 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onImportImages,
   onCreateCodeBlock
 }) => {
-  const btnClass = (t: ToolType) => 
+  const btnClass = (t: ToolType) =>
     `p-2 rounded transition-colors ${tool === t ? 'bg-blue-100 text-blue-600 shadow-inner' : 'hover:bg-gray-100 text-gray-700'}`;
 
   const currentColors = background === 'black' ? DARK_COLORS : LIGHT_COLORS;
+
+  const handleZoomReset = () => {
+    // Calculate the center point of the current viewport in canvas coordinates
+    const centerX = (window.innerWidth / 2 - viewPos.x) / zoom;
+    const centerY = (window.innerHeight / 2 - viewPos.y) / zoom;
+
+    // Calculate new position to keep the same center point at 100% zoom
+    const newViewPos = {
+      x: window.innerWidth / 2 - centerX * 1,
+      y: window.innerHeight / 2 - centerY * 1
+    };
+
+    setZoom(1);
+    setViewPos(newViewPos);
+  };
 
   return (
     <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-white shadow-xl rounded-lg p-2 flex items-center gap-3 border border-gray-200 z-50">
@@ -207,10 +226,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Zoom & Actions */}
       <div className="flex items-center gap-2">
-        <button 
-           onClick={() => setZoom(1)} 
+        <button
+           onClick={handleZoomReset}
            className="px-2 py-1 text-xs font-mono bg-gray-100 hover:bg-gray-200 rounded min-w-[60px] text-center"
-           title="Current Zoom (Click to Reset)"
+           title="Current Zoom (Click to Reset to 100%)"
         >
            {Math.round(zoom * 100)}%
         </button>

@@ -64,7 +64,7 @@ function sprayDots(stroke: number[][], size: number): string {
   const parts: string[] = [];
   // Fixed stride: each candidate index is absolute, so dots don't shift as stroke grows.
   // Leave one stride's worth of headroom at the end (keeps the taper region clean).
-  const stride = 12;
+  const stride = 8; // Reduced from 12 for more density
 
   for (let i = stride; i < stroke.length - stride; i += stride) {
     // Always consume exactly 4 values per position — keeps the PRNG sequence
@@ -74,12 +74,12 @@ function sprayDots(stroke: number[][], size: number): string {
     const distR = rand();
     const sizeR = rand();
 
-    if (roll < 0.5) continue; // ~50 % of candidates are skipped
+    if (roll < 0.25) continue; // Reduced from 0.5 - now ~75% of candidates are drawn
 
-    const dist = size * 0.6 + distR * size * 1.2;
+    const dist = size * 0.5 + distR * size * 1.0; // Slightly closer to the stroke
     const x    = stroke[i][0] + Math.cos(angle) * dist;
     const y    = stroke[i][1] + Math.sin(angle) * dist;
-    const r    = size * 0.08 + sizeR * sizeR * size * 0.45;
+    const r    = size * 0.15 + sizeR * sizeR * size * 0.65; // Significantly larger dots
 
     parts.push(
       `M ${(x - r).toFixed(2)} ${y.toFixed(2)} ` +
@@ -126,7 +126,7 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
   let totalDistance = 0;
   let maxSpeed = 0;
   const speeds: number[] = [0];
-  
+
   for (let i = 1; i < stroke.length; i++) {
     const dx = stroke[i][0] - stroke[i-1][0];
     const dy = stroke[i][1] - stroke[i-1][1];
@@ -135,10 +135,30 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
     speeds.push(dist);
     maxSpeed = Math.max(maxSpeed, dist);
   }
-  
+
   const avgSpeed = stroke.length > 1 ? totalDistance / (stroke.length - 1) : 0;
-  const isQuick = avgSpeed > 3.5;
-  const isVeryFast = avgSpeed > 6;
+
+  // Enhanced speed detection: look at speed distribution, not just average
+  // Count how many points are "fast" vs "slow"
+  const fastThreshold = 4;
+  const veryFastThreshold = 8;
+  let fastPointCount = 0;
+  let veryFastPointCount = 0;
+
+  speeds.forEach(s => {
+    if (s > fastThreshold) fastPointCount++;
+    if (s > veryFastThreshold) veryFastPointCount++;
+  });
+
+  const fastRatio = speeds.length > 0 ? fastPointCount / speeds.length : 0;
+  const veryFastRatio = speeds.length > 0 ? veryFastPointCount / speeds.length : 0;
+
+  // A stroke is "quick" if more than 30% of points are fast OR average is high
+  const isQuick = fastRatio > 0.3 || avgSpeed > 3;
+  // A stroke is "very fast" if more than 20% of points are very fast OR average is very high
+  const isVeryFast = veryFastRatio > 0.2 || avgSpeed > 6 || maxSpeed > 12;
+  // Detect choppy/deliberate strokes (many small segments)
+  const isChoppy = stroke.length > 20 && avgSpeed < 2.5;
   const isLong = stroke.length > 40;
 
   // Slow start: ink pools at the nib when pen hesitates before moving
@@ -146,43 +166,60 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
 
   // Adaptive fountain pen settings based on stroke characteristics
   const points = getStroke(stroke, {
-    // Size adapts: slightly smaller for fast strokes, larger for slow deliberate ones
-    size: size * (isVeryFast ? 0.82 : isQuick ? 0.92 : 1.15),
+    // Size adapts: much more dramatic variation
+    // Very fast = thin and light, choppy/slow = thick and bold
+    size: size * (isVeryFast ? 0.75 : isQuick ? 0.88 : isChoppy ? 1.25 : 1.15),
 
     // Thinning: controls thick-to-thin contrast; higher = more calligraphic character
-    thinning: isVeryFast ? 0.45 : isQuick ? 0.62 : 0.75,
+    // Fast strokes get more variation, slow strokes stay more consistent
+    thinning: isVeryFast ? 0.55 : isQuick ? 0.68 : isChoppy ? 0.35 : 0.75,
 
-    // Smoothing: less for fast strokes to maintain responsiveness
-    smoothing: isVeryFast ? 0.32 : isQuick ? 0.45 : 0.58,
+    // Smoothing: much less for fast strokes to show gesture, more for deliberate strokes
+    smoothing: isVeryFast ? 0.25 : isQuick ? 0.4 : isChoppy ? 0.7 : 0.58,
 
-    // Streamline: more for long strokes to maintain flow
-    streamline: isLong ? 0.68 : isQuick ? 0.52 : 0.62,
+    // Streamline: more for long/fast strokes to maintain flow, less for choppy
+    streamline: isLong ? 0.7 : isVeryFast ? 0.6 : isQuick ? 0.52 : isChoppy ? 0.45 : 0.62,
 
     // Custom easing for elegant ink flow simulation
     easing: (t) => {
-      // Smooth step with slight asymmetry for natural feel
-      const t2 = t * t;
-      const t3 = t2 * t;
-      return 3 * t2 - 2 * t3 + 0.1 * Math.sin(t * Math.PI);
+      // Fast strokes: more linear for crisp response
+      // Slow strokes: more easing for smooth flow
+      if (isVeryFast) {
+        return t * (2 - t); // Ease-out quadratic
+      } else if (isChoppy) {
+        // Very smooth for deliberate strokes
+        return t * t * (3 - 2 * t); // Smoothstep
+      } else {
+        // Default: smooth step with slight asymmetry
+        const t2 = t * t;
+        const t3 = t2 * t;
+        return 3 * t2 - 2 * t3 + 0.1 * Math.sin(t * Math.PI);
+      }
     },
 
     start: {
       // Slow start: short taper so the stroke begins heavy (ink-loaded nib)
-      // Fast start: normal taper, pen is skimming the paper
+      // Fast start: longer taper for crisp entry
       taper: slowStart
-        ? (isVeryFast ? 2 : isQuick ? 4 : 6)
-        : (isVeryFast ? 5 : isQuick ? 10 : 16),
-      easing: (t) => t * t * (3 - 2 * t),  // Smoothstep for natural ink loading
+        ? (isVeryFast ? 2 : isQuick ? 3 : 5)
+        : (isVeryFast ? 8 : isQuick ? 12 : isChoppy ? 8 : 16),
+      easing: (t) => isVeryFast ? t * t : t * t * (3 - 2 * t),
       cap: true,
     },
 
     end: {
-      // Longer end taper for a more elegant trailing-off finish
-      taper: isVeryFast ? 12 : isQuick ? 20 : 30,
+      // Longer end taper for elegant trailing-off
+      // Very fast strokes get shorter taper for quick release
+      taper: isVeryFast ? 10 : isQuick ? 18 : isChoppy ? 12 : 30,
       easing: (t) => {
-        // Elegant flick-off effect
-        const ease = 1 - Math.pow(1 - t, 3);
-        return ease * (1 + 0.1 * (1 - t));
+        if (isVeryFast) {
+          // Quick release
+          return t * t;
+        } else {
+          // Elegant flick-off effect
+          const ease = 1 - Math.pow(1 - t, 3);
+          return ease * (1 + 0.1 * (1 - t));
+        }
       },
       cap: true,
     },

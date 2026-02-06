@@ -204,6 +204,13 @@ function App() {
   const handleCreateCodeBlock = () => {
     if (!state) return;
 
+    // Calculate center of current viewport in canvas coordinates
+    // viewPos is the stage position (negative offset from origin)
+    // To get canvas coordinates from screen center:
+    // canvasX = (screenX - stageX) / zoom
+    const centerX = (window.innerWidth / 2 - viewPos.x) / zoom - 250;  // -250 to center the block (half of 500 width)
+    const centerY = (window.innerHeight / 2 - viewPos.y) / zoom - 200; // -200 to center the block (half of 400 height)
+
     const newCodeBlock: CodeBlockObj = {
       id: Date.now().toString(),
       type: 'codeblock',
@@ -256,10 +263,9 @@ svg.append('path')
   .attr('stroke', 'red')
   .attr('stroke-width', 2)
   .attr('d', line);`,
-      // Place at a fixed, easy-to-find position on the canvas
-      // Stack new code blocks vertically if multiple exist
-      x: 50,
-      y: 50 + (state.codeblocks.length * 50),
+      // Place at the center of the current viewport
+      x: centerX,
+      y: centerY,
       width: 500,
       height: 400,
       fontSize: 14,
@@ -269,12 +275,6 @@ svg.append('path')
     handleUpdate({ codeblocks: [...state.codeblocks, newCodeBlock] });
     setSelectedIds([newCodeBlock.id]);
     setTool('select');
-
-    // Pan viewport to show the new code block
-    setViewPos({
-      x: -(newCodeBlock.x - 100) * zoom,  // Center it with some margin
-      y: -(newCodeBlock.y - 100) * zoom
-    });
   };
 
   const copySelection = () => {
@@ -1090,10 +1090,13 @@ svg.append('path')
   // Determine minimap visibility: show when panning, hide in presentation mode
   const showMinimap = !presentationMode && (tool === 'hand' || isSpacebarPressed);
 
+  // Container background should match the whiteboard background
+  const containerBg = background === 'black' ? 'bg-[#1a1a1a]' : 'bg-white';
+
   return (
-    <div className="w-full h-screen bg-gray-50 overflow-hidden">
+    <div className={`w-full h-screen overflow-hidden ${containerBg}`}>
       {!presentationMode && (
-      <Toolbar 
+      <Toolbar
         tool={tool}
         setTool={setTool}
         color={color}
@@ -1104,6 +1107,8 @@ svg.append('path')
         setBackground={setBackground}
         zoom={zoom}
         setZoom={setZoom}
+        viewPos={viewPos}
+        setViewPos={setViewPos}
         canUndo={canUndo}
         canRedo={canRedo}
         onUndo={undo}

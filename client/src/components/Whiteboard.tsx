@@ -2022,6 +2022,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   return (
     <Stage
+      ref={stageRef}
       width={window.innerWidth}
       height={window.innerHeight}
       onMouseDown={handleMouseDown}
@@ -2040,7 +2041,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       style={{ cursor: getCursorForTool(tool) }}
       onWheel={(e) => {
         e.evt.preventDefault();
-        const stage = e.target.getStage();
+        const stage = stageRef.current;
         if (!stage) return;
 
         if (e.evt.ctrlKey || e.evt.metaKey) {
@@ -2053,22 +2054,21 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             y: (pointer.y - stage.y()) / oldScale,
           };
           const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+          const clampedScale = Math.max(0.1, Math.min(10, newScale)); // Clamp between 10% and 1000%
 
-          setZoom(newScale);
-
-          stage.scale({ x: newScale, y: newScale });
           const newPos = {
-            x: pointer.x - mousePointTo.x * newScale,
-            y: pointer.y - mousePointTo.y * newScale,
+            x: pointer.x - mousePointTo.x * clampedScale,
+            y: pointer.y - mousePointTo.y * clampedScale,
           };
-          stage.position(newPos);
+
+          // Update state first, then stage will sync via useEffect
+          setZoom(clampedScale);
           setViewPos(newPos);
         } else {
           const dx = -e.evt.deltaX;
           const dy = -e.evt.deltaY;
           const pos = stage.position();
           const newPos = { x: pos.x + dx, y: pos.y + dy };
-          stage.position(newPos);
           setViewPos(newPos);
         }
       }}

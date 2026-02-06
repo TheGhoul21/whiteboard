@@ -69,17 +69,17 @@ function sprayDots(stroke: number[][], size: number): string {
   for (let i = stride; i < stroke.length - stride; i += stride) {
     // Always consume exactly 4 values per position — keeps the PRNG sequence
     // locked regardless of which positions are skipped.
-    const roll  = rand();
+    const roll = rand();
     const angle = rand() * Math.PI * 2;
     const distR = rand();
     const sizeR = rand();
 
-    if (roll < 0.15) continue; // ~85% of candidates are drawn for nice splash
+    if (roll < 0.01) continue; // ~85% of candidates are drawn for nice splash
 
     const dist = size * 0.5 + distR * size * 1.0; // Slightly closer to the stroke
-    const x    = stroke[i][0] + Math.cos(angle) * dist;
-    const y    = stroke[i][1] + Math.sin(angle) * dist;
-    const r    = size * 0.05 + sizeR * sizeR * size * 0.25; // Smaller dots for subtle splash effect
+    const x = stroke[i][0] + Math.cos(angle) * dist;
+    const y = stroke[i][1] + Math.sin(angle) * dist;
+    const r = size * 0.05 + sizeR * sizeR * size * 0.25; // Smaller dots for subtle splash effect
 
     parts.push(
       `M ${(x - r).toFixed(2)} ${y.toFixed(2)} ` +
@@ -128,8 +128,8 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
   const speeds: number[] = [0];
 
   for (let i = 1; i < stroke.length; i++) {
-    const dx = stroke[i][0] - stroke[i-1][0];
-    const dy = stroke[i][1] - stroke[i-1][1];
+    const dx = stroke[i][0] - stroke[i - 1][0];
+    const dy = stroke[i][1] - stroke[i - 1][1];
     const dist = Math.sqrt(dx * dx + dy * dy);
     totalDistance += dist;
     speeds.push(dist);
@@ -232,19 +232,19 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
 
   // Generate ultra-smooth SVG path with cubic Bezier curves
   let d = `M ${points[0][0].toFixed(2)} ${points[0][1].toFixed(2)}`;
-  
+
   // Use smooth quadratic curves with midpoint control
   for (let i = 1; i < points.length - 1; i++) {
     const curr = points[i];
     const next = points[i + 1];
-    
+
     // Calculate midpoint for smooth curve transition
     const midX = (curr[0] + next[0]) / 2;
     const midY = (curr[1] + next[1]) / 2;
-    
+
     d += ` Q ${curr[0].toFixed(2)} ${curr[1].toFixed(2)}, ${midX.toFixed(2)} ${midY.toFixed(2)}`;
   }
-  
+
   // Connect to last point
   const last = points[points.length - 1];
   d += ` L ${last[0].toFixed(2)} ${last[1].toFixed(2)}`;
@@ -422,7 +422,7 @@ export function getSmoothLinePath(flatPoints: number[]): string {
     const p2 = points[i + 1];
     const midX = (p1[0] + p2[0]) / 2;
     const midY = (p1[1] + p2[1]) / 2;
-    
+
     // Curve from previous point (or midpoint) to this midpoint, controlled by p1
     d += ` Q ${p1[0]} ${p1[1]}, ${midX} ${midY}`;
   }

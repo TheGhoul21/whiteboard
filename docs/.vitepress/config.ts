@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Whiteboard Documentation',
   description: 'A powerful infinite-canvas whiteboard for creating educational content',
-  base: '/whiteboard/docs/', // Subdirectory on gh-pages
+  base: '/whiteboard/', // GitHub Pages repository URL
 
   themeConfig: {
     logo: '/logo.svg',

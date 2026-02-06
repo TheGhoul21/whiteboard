@@ -190,7 +190,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     };
   };
 
+  // Helper to convert hex color to URL-encoded format for SVG
+  const encodeColor = (color: string): string => {
+    return color.replace('#', '%23');
+  };
+
   const getCursorForTool = (tool: ToolType): string => {
+    const encodedColor = encodeColor(color);
+
     switch (tool) {
       case 'select':
         return 'default';
@@ -198,9 +205,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><path d="M18 11V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7m0 0h3m-3 0l3-3m0 0v3"/></svg>') 12 12, auto`;
       case 'pen':
       case 'smooth-pen':
-        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%23000" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M9 11l-2 2"/></svg>') 2 2, crosshair`;
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${encodedColor}" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z M9 11l-2 2"/></svg>') 2 2, crosshair`;
       case 'highlighter':
-        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="%23ffeb3b" stroke="%23f57c00" stroke-width="1"><path d="M2 12l2-2 7 7-2 2L2 12z M21 3l-7 7-3-3 7-7 3 3z"/></svg>') 10 10, crosshair`;
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="${encodedColor}" stroke="${encodedColor}" stroke-width="1" opacity="0.5"><path d="M2 12l2-2 7 7-2 2L2 12z M21 3l-7 7-3-3 7-7 3 3z"/></svg>') 10 10, crosshair`;
       case 'eraser':
         return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="%23ffffff" stroke="black" stroke-width="2" stroke-linejoin="round"><rect x="2" y="12" width="20" height="8" rx="1"/><path d="M20 12l-6-6-4 4 6 6 4-4z"/></svg>') 10 10, auto`;
       case 'laser':
@@ -210,11 +217,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       case 'text':
         return 'text';
       case 'rect':
-        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 8 8, crosshair`;
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${encodedColor}" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>') 8 8, crosshair`;
       case 'circle':
-        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>') 8 8, crosshair`;
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${encodedColor}" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>') 8 8, crosshair`;
       case 'arrow':
-        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2"><path d="M5 12h14m-7-7l7 7-7 7"/></svg>') 10 10, crosshair`;
+        return `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${encodedColor}" stroke-width="2"><path d="M5 12h14m-7-7l7 7-7 7"/></svg>') 10 10, crosshair`;
       default:
         return 'default';
     }

@@ -5,10 +5,14 @@ import { FrameManager } from './components/FrameManager';
 import { Minimap } from './components/Minimap';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { ExportDialog, type ExportMode } from './components/ExportDialog';
+import { PresentationControls } from './components/PresentationControls';
+import { PresentationWindow } from './components/PresentationWindow';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, FrameObj, CodeBlockObj, D3VisualizationObj, Animation } from './types';
 import Konva from 'konva';
 import jsPDF from 'jspdf';
 import useHistory from './hooks/useHistory';
+import { useWindowSync } from './hooks/useWindowSync';
+import { isPresentationWindow, getWindowMode } from './utils/platform';
 
 interface AppState {
    strokes: Stroke[];
@@ -77,12 +81,16 @@ const DARK_COLORS = [
 ];
 
 function App() {
+  // Detect window mode (control, presentation, or web)
+  const windowMode = getWindowMode();
+  const isPresentation = isPresentationWindow();
+
   const [tool, setTool] = useState<ToolType>('pen');
   const previousToolRef = useRef<ToolType>('pen');
-  
+
   const [color, setColor] = useState('#000000');
   const [toolSizes, setToolSizes] = useState<Record<ToolType, number>>(DEFAULT_SIZES);
-  
+
   const size = toolSizes[tool] || 5;
   const setSize = (newSize: number) => {
      setToolSizes(prev => ({ ...prev, [tool]: newSize }));
@@ -93,6 +101,7 @@ function App() {
   const [viewPos, setViewPos] = useState({ x: 0, y: 0 });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [presentationMode, setPresentationMode] = useState(false);
+  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
   const [isSpacebarPressed, setIsSpacebarPressed] = useState(false);
   const [showAutoSaveNotification, setShowAutoSaveNotification] = useState(false);
   const [a4GridVisible, setA4GridVisible] = useState(false);
@@ -102,10 +111,65 @@ function App() {
   // Internal Clipboard
   const clipboard = useRef<Partial<AppState> | null>(null);
   const hasUnsavedChanges = useRef(false);
-  
+
   const { state, setState, undo, redo, canUndo, canRedo } = useHistory<AppState>(initialState);
-  
+
   const stageRef = useRef<Konva.Stage | null>(null);
+
+  // Full app state for syncing between windows
+  interface FullAppState extends AppState {
+    tool: ToolType;
+    color: string;
+    toolSizes: Record<ToolType, number>;
+    background: BackgroundType;
+    zoom: number;
+    viewPos: { x: number; y: number };
+    pointerPos: { x: number; y: number } | null;
+  }
+
+  const setFullState = useCallback((newState: FullAppState) => {
+    setState(newState);
+    setTool(newState.tool);
+    setColor(newState.color);
+    setToolSizes(newState.toolSizes);
+    setBackground(newState.background);
+    setZoom(newState.zoom);
+    setViewPos(newState.viewPos);
+    setPointerPos(newState.pointerPos);
+  }, [setState]);
+
+  // Create fullState inside useMemo to avoid recreating on every render
+  const fullState: FullAppState = {
+    ...state,
+    tool,
+    color,
+    toolSizes,
+    background,
+    zoom,
+    viewPos,
+    pointerPos,
+  };
+
+  const { syncToStorage } = useWindowSync(fullState, setFullState, windowMode !== 'web');
+
+  // Control window: Sync state changes to presentation window
+  // Sync whenever core state changes
+  useEffect(() => {
+    if (windowMode === 'control') {
+      const stateToSync: FullAppState = {
+        ...state,
+        tool,
+        color,
+        toolSizes,
+        background,
+        zoom,
+        viewPos,
+        pointerPos,
+      };
+      console.log('[Control] Syncing state to presentation window');
+      syncToStorage(stateToSync);
+    }
+  }, [state, tool, color, toolSizes, background, zoom, viewPos, pointerPos, windowMode, syncToStorage]);
 
   const handleUpdate = useCallback((newState: Partial<AppState>, overwrite = false) => {
      console.log('[App] handleUpdate called with:', {
@@ -1133,6 +1197,55 @@ svg.append('path')
   const isDarkBg = background === 'black' || background === 'black-grid' || background === 'black-lines';
   const containerBg = isDarkBg ? 'bg-[#1a1a1a]' : 'bg-white';
 
+  // Get presentation settings for background color
+  const presentationSettings = JSON.parse(localStorage.getItem('presentation-settings') || '{}');
+  const presentationBgColor = presentationSettings.backgroundColor || '#ffffff';
+
+  // Presentation window: Show only canvas in a frameless wrapper
+  if (isPresentation) {
+    console.log('[Presentation Mode] Rendering presentation window', {
+      hasState: !!state,
+      strokeCount: currentState.strokes?.length || 0,
+      background,
+      zoom,
+      viewPos
+    });
+
+    return (
+      <PresentationWindow backgroundColor={presentationBgColor}>
+        <Whiteboard
+            tool={tool} // Use synced tool from control
+            setTool={() => {}} // No-op in presentation mode
+            color={color}
+            size={size}
+            strokes={currentState.strokes}
+            images={currentState.images}
+            texts={currentState.texts}
+            shapes={currentState.shapes}
+            latex={currentState.latex}
+            codes={currentState.codes}
+            notes={currentState.notes}
+            codeblocks={currentState.codeblocks}
+            d3visualizations={currentState.d3visualizations}
+            animations={currentState.animations}
+            background={background}
+            onUpdate={() => {}} // Read-only, no updates
+            stageRef={stageRef}
+            selectedIds={[]}
+            setSelectedIds={() => {}} // No selection in presentation
+            zoom={zoom}
+            setZoom={() => {}} // Zoom is synced from control
+            viewPos={viewPos}
+            setViewPos={() => {}} // ViewPos is synced from control
+            a4GridVisible={a4GridVisible}
+            pointerPos={pointerPos}
+            setPointerPos={() => {}} // Read-only, pointer is synced from control
+          />
+      </PresentationWindow>
+    );
+  }
+
+  // Control window or web mode: Show full UI
   return (
     <div className={`w-full h-screen overflow-hidden ${containerBg}`}>
       {!presentationMode && (
@@ -1162,7 +1275,7 @@ svg.append('path')
       )}
 
       {!presentationMode && (
-      <FrameManager 
+      <FrameManager
          frames={currentState.frames}
          onAddFrame={handleAddFrame}
          onDeleteFrame={handleDeleteFrame}
@@ -1195,7 +1308,12 @@ svg.append('path')
         viewPos={viewPos}
         setViewPos={setViewPos}
         a4GridVisible={a4GridVisible}
+        pointerPos={pointerPos}
+        setPointerPos={setPointerPos}
       />
+
+      {/* Presentation Controls (Tauri control window only) */}
+      {windowMode === 'control' && <PresentationControls />}
 
       {showMinimap && (
       <Minimap

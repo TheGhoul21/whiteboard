@@ -1,6 +1,24 @@
 # 🎓 Teaching Whiteboard
 
-A powerful, infinite-canvas whiteboard application designed specifically for creating educational content, coding tutorials, and math explanations. Built with **React**, **Konva**, and **Node.js**.
+A powerful, infinite-canvas whiteboard application designed specifically for creating educational content, coding tutorials, and math explanations. Built with **React**, **Konva**, and **Tauri**.
+
+## 🖥️ Desktop App (NEW!)
+
+The whiteboard now includes a **Tauri desktop app** with dual-window support for video recording:
+
+- **Control Window**: Full UI with toolbar and all controls
+- **Presentation Window**: Clean canvas-only view (frameless, perfect for OBS capture)
+- **Real-time Sync**: Both windows stay synchronized as you draw
+- **Features**: Always-on-top toggle, custom background colors for chroma keying, fullscreen mode
+
+**Quick Start:**
+```bash
+cd client
+npm install
+npm run tauri:dev
+```
+
+See [TAURI_README.md](./TAURI_README.md) for complete setup, build instructions, and OBS integration guide.
 
 ## ✨ Key Features
 

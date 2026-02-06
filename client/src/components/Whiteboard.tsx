@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Circle, Path } from 'react-konva';
+import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text, Rect, Path } from 'react-konva';
 import Konva from 'konva';
 import type { Stroke, ImageObj, TextObj, ShapeObj, ToolType, BackgroundType, LatexObj, CodeObj, NoteObj, CodeBlockObj, D3VisualizationObj, Animation, Keyframe, BoardAPI } from '../types';
 import { getSvgPathFromStroke, getCalligraphyPath, flatToPoints, getSmoothLinePath, getRoughRectPath, getRoughCirclePath, getRoughArrowPath } from '../utils/stroke';
@@ -34,6 +34,8 @@ interface WhiteboardProps {
   viewPos: { x: number, y: number };
   setViewPos: (pos: { x: number, y: number }) => void;
   a4GridVisible?: boolean;
+  pointerPos?: { x: number, y: number } | null;
+  setPointerPos?: (pos: { x: number, y: number } | null) => void;
 }
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({
@@ -59,7 +61,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   setZoom,
   viewPos,
   setViewPos,
-  a4GridVisible = false
+  a4GridVisible = false,
+  pointerPos: pointerPosProp,
+  setPointerPos: setPointerPosProp
 }) => {
   console.log('[Whiteboard] Render with:', {
     codeblocks: codeblocks.length,
@@ -99,8 +103,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const selectionStart = useRef<{ x: number, y: number } | null>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [selectionBox, setSelectionBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
-  const [pointerPos, setPointerPos] = useState<{ x: number, y: number } | null>(null);
+  const [localPointerPos, setLocalPointerPos] = useState<{ x: number, y: number } | null>(null);
   const [isDraggingOverlay, setIsDraggingOverlay] = useState(false);
+  const [, setLaserTimestamp] = useState(0); // Force re-render for laser fade animation
+
+  // Use synced pointerPos from props (presentation mode) or local state (control mode)
+  const pointerPos = pointerPosProp !== undefined ? pointerPosProp : localPointerPos;
+  const setPointerPos = setPointerPosProp || setLocalPointerPos;
 
   const overlayDragStart = useRef<{ x: number, y: number } | null>(null);
 
@@ -410,7 +419,23 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const now = Date.now();
       const hasLaser = strokes.some(s => s.tool === 'laser');
       if (hasLaser) {
-        const activeStrokes = strokes.filter(s => s.tool !== 'laser' || (s.createdAt && now - s.createdAt < 15000));
+        // Check for fading laser strokes (have createdAt and are less than 3 seconds old)
+        const FADE_DURATION = 3000; // Match the fade duration in rendering
+        const hasFadingLaser = strokes.some(s =>
+          s.tool === 'laser' && s.createdAt && (now - s.createdAt < FADE_DURATION)
+        );
+
+        // Force re-render every frame if there are fading laser strokes
+        if (hasFadingLaser) {
+          setLaserTimestamp(now);
+        }
+
+        // Remove old laser strokes (older than 15 seconds)
+        const activeStrokes = strokes.filter(s =>
+          s.tool !== 'laser' || // Keep non-laser strokes
+          !s.createdAt || // Keep laser strokes still being drawn (no createdAt yet)
+          (now - s.createdAt < 15000) // Keep recent laser strokes (< 15 seconds old)
+        );
         if (activeStrokes.length !== strokes.length) {
           onUpdate({ strokes: activeStrokes }, true);
         }
@@ -839,7 +864,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         size: size,
         opacity: tool === 'highlighter' ? 0.3 : 1,
         points: [pos.x, pos.y],
-        createdAt: tool === 'laser' ? Date.now() : undefined,
+        createdAt: undefined, // Will be set on mouseup for laser
         zIndex: maxZ + 1  // Place new stroke on top
       };
       onUpdate({ strokes: [...strokes, newStroke] });
@@ -1113,6 +1138,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             }, true);
           }
         }
+      }
+    }
+
+    // Set createdAt for laser pointer when finishing the stroke
+    if (isDrawing.current && tool === 'laser' && strokes.length > 0) {
+      const lastStroke = strokes[strokes.length - 1];
+      if (lastStroke.tool === 'laser' && !lastStroke.createdAt) {
+        const updatedStrokes = [...strokes];
+        updatedStrokes[updatedStrokes.length - 1] = {
+          ...lastStroke,
+          createdAt: Date.now()
+        };
+        onUpdate({ strokes: updatedStrokes }, true);
       }
     }
 
@@ -1636,8 +1674,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     if (type === 'stroke') {
       const stroke = data as Stroke;
       if (stroke.tool === 'laser') {
-        const age = Date.now() - (stroke.createdAt || 0);
-        const opacity = Math.max(0, 1 - age / 1000);
+        // If createdAt is not set, stroke is still being drawn - show at 60% opacity
+        // Otherwise, fade from 60% to 0% over 3 seconds
+        const INITIAL_OPACITY = 0.6;
+        const FADE_DURATION = 3000; // 3 seconds
+        const opacity = stroke.createdAt
+          ? Math.max(0, INITIAL_OPACITY * (1 - (Date.now() - stroke.createdAt) / FADE_DURATION))
+          : INITIAL_OPACITY;
         if (opacity <= 0) return null;
         const pathData = getSvgPathFromStroke(flatToPoints(stroke.points), stroke.size * 2, 0.1);
         return (
@@ -2123,10 +2166,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   return (
-    <Stage
-      ref={stageRef}
-      width={window.innerWidth}
-      height={window.innerHeight}
+    <>
+      <Stage
+        ref={stageRef}
+        width={window.innerWidth}
+        height={window.innerHeight}
       onMouseDown={handleMouseDown}
       onMousemove={handleMouseMove}
       onMouseup={handleMouseUp}
@@ -2231,44 +2275,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         />
       </Layer>
 
-      {/* Pointer/Spotlight Layer */}
-      {tool === 'pointer' && pointerPos && (
-        <Layer>
-          <Rect
-            x={-viewPos.x / zoom}
-            y={-viewPos.y / zoom}
-            width={window.innerWidth / zoom}
-            height={window.innerHeight / zoom}
-            fill="rgba(0, 0, 0, 0.7)"
-            listening={false}
-          />
-          <Circle
-            x={pointerPos.x}
-            y={pointerPos.y}
-            radius={size}
-            fill="rgba(255, 255, 255, 0.1)"
-            stroke="#FFD700"
-            strokeWidth={3}
-            shadowColor="rgba(255, 215, 0, 0.8)"
-            shadowBlur={20}
-            shadowOpacity={1}
-            globalCompositeOperation="destination-out"
-            listening={false}
-          />
-          <Circle
-            x={pointerPos.x}
-            y={pointerPos.y}
-            radius={size}
-            stroke="#FFD700"
-            strokeWidth={3}
-            shadowColor="rgba(255, 215, 0, 0.8)"
-            shadowBlur={20}
-            shadowOpacity={1}
-            listening={false}
-          />
-        </Layer>
-      )}
-
       {/* A4 Grid Overlay */}
       {a4GridVisible && (
         <A4Grid
@@ -2280,5 +2286,49 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         />
       )}
     </Stage>
+
+      {/* HTML Spotlight Overlay - Appears above codeblocks */}
+      {tool === 'pointer' && pointerPos && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            pointerEvents: 'none',
+            zIndex: 999999,
+          }}
+        >
+          {/* Dark overlay */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            }}
+          />
+          {/* Spotlight circle */}
+          <div
+            style={{
+              position: 'absolute',
+              left: pointerPos.x * zoom + viewPos.x,
+              top: pointerPos.y * zoom + viewPos.y,
+              width: size * zoom * 2,
+              height: size * zoom * 2,
+              borderRadius: '50%',
+              transform: 'translate(-50%, -50%)',
+              boxShadow: `0 0 0 9999px rgba(0, 0, 0, 0.7),
+                          0 0 20px 5px rgba(255, 215, 0, 0.8),
+                          inset 0 0 20px 5px rgba(255, 215, 0, 0.3)`,
+              border: '3px solid #FFD700',
+            }}
+          />
+        </div>
+      )}
+    </>
   );
 };

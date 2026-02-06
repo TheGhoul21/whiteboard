@@ -118,3 +118,11 @@ server/dist/
 # Local data storage
 server/data/*.json
 !server/data/.keep
+
+# Tauri build artifacts
+client/src-tauri/target/
+client/src-tauri/WixTools/
+*.log
+
+# Tauri generated files
+client/src-tauri/Cargo.lock

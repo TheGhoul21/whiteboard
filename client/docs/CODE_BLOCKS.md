@@ -599,6 +599,453 @@ animate(initialFrames);
 // 3. Click + KF to add more keyframes
 ```
 
+## High-Performance Animations with Precompute/Render
+
+For complex animations (gradient descent, physics simulations, iterative algorithms), the standard approach re-executes your entire code 30-60 times per second. This causes stuttering when computations are expensive.
+
+The whiteboard implements a **game-engine-style precompute/render architecture** that separates expensive computation from fast per-frame rendering — the same pattern used by Unity, Unreal Engine, and video codecs.
+
+### The Problem: Expensive Per-Frame Computation
+
+**Naive approach** (re-executes everything each frame):
+
+```javascript
+const step = slider('Step', 0, 50, 0);
+
+// BAD: This runs EVERY FRAME during animation
+let x = 8;
+for (let i = 0; i < step; i++) {
+  const grad = 2 * (x - 3);
+  x = x - 0.1 * grad;
+}
+
+const svg = d3.select(output).append('svg')...
+svg.append('circle').attr('cx', x * 50);
+```
+
+**Performance:**
+- Frame 0: 1 iteration = 0.1ms ✓
+- Frame 25: 25 iterations = 2.5ms ⚠️
+- Frame 50: 50 iterations = 5ms ✗ (drops to 30fps, stuttering)
+
+### The Solution: Precompute + Render Separation
+
+**Efficient approach** (compute once, render 60fps):
+
+```javascript
+const step = slider('Step', 0, 50, 0);
+
+// PHASE 1: PRECOMPUTE (runs ONCE when you hit Run)
+precompute((saveFrame) => {
+  let x = 8;
+
+  for (let frame = 0; frame <= 50; frame++) {
+    // Expensive: run gradient descent
+    if (frame > 0) {
+      const grad = 2 * (x - 3);
+      x = x - 0.1 * grad;
+    }
+
+    // Cache the result for this frame
+    saveFrame(frame, { x, loss: (x - 3) ** 2 });
+  }
+});
+
+// PHASE 2: RENDER (runs 60fps during playback)
+render((data) => {
+  // Fast: just read cached data and update DOM
+  const svg = d3.select(output).append('svg')...
+  svg.append('circle')
+    .attr('cx', data.x * 50)
+    .attr('cy', data.loss * 10);
+});
+```
+
+**Performance:**
+- Precompute: ~5ms once (all 50 iterations upfront)
+- Render (every frame): 0.1ms ✓✓✓ (smooth 60fps)
+
+### How It Works
+
+1. **User hits "Run"**: Slow path executes
+   - Your code runs via `new Function()`
+   - `precompute()` registers the compute function
+   - `render()` registers the render function
+   - System calls `precompute` once, builds frame cache
+   - System calls `render(frame0Data)` once to show initial state
+
+2. **User hits "Play"**: Fast path activates
+   - AnimationPlayer interpolates control values (Step: 0→50)
+   - For each frame at 60fps:
+     - Calculate `frameIndex = floor(time * fps)`
+     - Lookup cached data for that frame
+     - Call `render(cachedData)` to update DOM
+     - Update visualization (~0.1ms per frame)
+
+3. **User changes control**: Slow path re-executes
+   - Clears frame cache
+   - Re-runs `precompute` with new control values
+   - Regenerates all frame data
+   - New animation created with updated keyframes
+
+### Complete Example: Gradient Descent
+
+```javascript
+const step = slider('Step', 0, 50, 0);
+const learningRate = slider('Learning Rate', 0.01, 0.5, 0.1, 0.01);
+
+// PRECOMPUTE: Run gradient descent for all frames
+precompute((saveFrame) => {
+  let x = 8, y = 8;
+
+  for (let i = 0; i <= 50; i++) {
+    const loss = (x - 3) ** 2 + (y - 4) ** 2;
+    saveFrame(i, { x, y, loss });
+
+    if (i < 50) {
+      x = x - learningRate * 2 * (x - 3);
+      y = y - learningRate * 2 * (y - 4);
+    }
+  }
+});
+
+// RENDER: Draw the visualization (fast!)
+render((data) => {
+  const svg = d3.select(output).append('svg')
+    .attr('width', 400).attr('height', 400);
+
+  // Draw contour plot (static background)
+  const xScale = d3.scaleLinear().domain([0, 10]).range([0, 400]);
+  const yScale = d3.scaleLinear().domain([0, 10]).range([400, 0]);
+
+  // Contour lines for loss function
+  for (let level = 1; level <= 30; level += 3) {
+    svg.append('circle')
+      .attr('cx', xScale(3))
+      .attr('cy', yScale(4))
+      .attr('r', Math.sqrt(level) * 20)
+      .attr('fill', 'none')
+      .attr('stroke', '#e5e7eb')
+      .attr('stroke-width', 1);
+  }
+
+  // Current position (red dot - ANIMATED)
+  svg.append('circle')
+    .attr('cx', xScale(data.x))
+    .attr('cy', yScale(data.y))
+    .attr('r', 8)
+    .attr('fill', '#ef4444');
+
+  // Display info
+  svg.append('text')
+    .attr('x', 10).attr('y', 30)
+    .attr('font-size', '16px')
+    .text(`Step ${step}: x=${data.x.toFixed(3)}, loss=${data.loss.toFixed(4)}`);
+});
+
+// Create animation
+const anim = createAnimation();
+for (let i = 0; i <= 50; i++) {
+  anim.addKeyframe(i / 10, { Step: i });
+}
+anim.save({ duration: 5.5, fps: 30, loop: true });
+```
+
+### When to Use Precompute/Render
+
+**Use it when:**
+- ✓ Iterative algorithms (gradient descent, physics, simulations)
+- ✓ Expensive computations (matrix operations, pathfinding)
+- ✓ Large datasets (1000+ particles)
+- ✓ Animations with >10 frames
+
+**Don't use it when:**
+- ✗ Simple static plots
+- ✗ Animations with <5 frames
+- ✗ Trivial calculations
+
+### API Reference
+
+#### `precompute(computeFn)`
+
+Registers the precompute phase function. Called **once** when code executes.
+
+**Parameters:**
+- `computeFn: (saveFrame: (index: number, data: any) => void) => void`
+
+**Rules:**
+- Must call `saveFrame()` for contiguous frame indices starting at 0
+- Data can be any serializable object (numbers, arrays, objects)
+- Should complete in <100ms to avoid freezing the UI
+
+**Example:**
+```javascript
+precompute((saveFrame) => {
+  for (let i = 0; i < 100; i++) {
+    const result = expensiveCalculation(i);
+    saveFrame(i, result);
+  }
+});
+```
+
+#### `render(renderFn)`
+
+Registers the render phase function. Called **every frame** during playback.
+
+**Parameters:**
+- `renderFn: (data: any) => void`
+  - `data`: The cached data for the current frame (from `saveFrame`)
+
+**Rules:**
+- Must clear and rebuild the DOM on every call
+- Should be fast (<1ms for 60fps)
+- Receives exactly what you passed to `saveFrame()` for this frame
+
+**Example:**
+```javascript
+render((data) => {
+  const svg = d3.select(output).append('svg')...
+  svg.append('circle').attr('cx', data.x).attr('cy', data.y);
+});
+```
+
+### Performance Tips
+
+**✅ DO THIS:**
+
+1. **Cache expensive computations in precompute**
+   ```javascript
+   precompute((saveFrame) => {
+     for (let i = 0; i < 100; i++) {
+       const matrix = expensiveMatrixOp(i);  // Heavy math
+       const eigen = computeEigenvalues(matrix);
+       saveFrame(i, { matrix, eigen });
+     }
+   });
+   ```
+
+2. **Keep render fast**
+   ```javascript
+   render((data) => {
+     // Just read cached data and update DOM
+     svg.selectAll('circle')
+       .data(data.points)
+       .enter().append('circle')
+       .attr('cx', d => d.x).attr('cy', d => d.y);
+   });
+   ```
+
+3. **Store minimal data**
+   ```javascript
+   // ✓ Good: store only what's needed
+   saveFrame(i, { x: 10, y: 20, color: '#ff0000' });
+
+   // ✗ Bad: storing entire objects
+   saveFrame(i, { wholeSimulationState: {...} });
+   ```
+
+**❌ AVOID THIS:**
+
+1. **Don't do heavy work in render**
+   ```javascript
+   render((data) => {
+     // ✗ BAD: expensive calculation every frame
+     const sorted = data.points.sort((a, b) => a.x - b.x);
+     const filtered = sorted.filter(p => p.y > 100);
+   });
+   ```
+   **Fix:** Move to precompute
+
+2. **Don't use incremental DOM updates**
+   ```javascript
+   render((data) => {
+     // ✗ BAD: trying to update existing elements
+     const circle = d3.select('#myCircle');
+     circle.attr('cx', data.x);  // Won't work! DOM is cleared each frame
+   });
+   ```
+   **Fix:** Always rebuild from scratch in `render()`
+
+3. **Don't hardcode values**
+   ```javascript
+   precompute((saveFrame) => {
+     // ✗ BAD: hardcoded value
+     for (let i = 0; i < 50; i++) {
+       saveFrame(i, compute(i));
+     }
+   });
+   ```
+   **Fix:** Use control values:
+   ```javascript
+   const n = slider('N', 10, 100, 50);
+   precompute((saveFrame) => {
+     for (let i = 0; i < n; i++) {  // ✓ Use slider value
+       saveFrame(i, compute(i));
+     }
+   });
+   ```
+
+### More Examples
+
+#### Physics Simulation
+
+```javascript
+const time = slider('Time', 0, 100, 0);
+
+precompute((saveFrame) => {
+  const particles = [
+    { x: 100, y: 100, vx: 2, vy: 3 },
+    { x: 300, y: 200, vx: -1, vy: 2 }
+  ];
+
+  for (let frame = 0; frame <= 100; frame++) {
+    // Save snapshot
+    saveFrame(frame, {
+      particles: particles.map(p => ({ x: p.x, y: p.y }))
+    });
+
+    // Update physics
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+
+      // Bounce off walls
+      if (p.x < 0 || p.x > 400) p.vx *= -1;
+      if (p.y < 0 || p.y > 400) p.vy *= -1;
+    });
+  }
+});
+
+render((data) => {
+  const svg = d3.select(output).append('svg')
+    .attr('width', 400).attr('height', 400);
+
+  data.particles.forEach(p => {
+    svg.append('circle')
+      .attr('cx', p.x).attr('cy', p.y)
+      .attr('r', 10).attr('fill', 'blue');
+  });
+});
+
+// Animate
+const anim = createAnimation();
+for (let i = 0; i <= 100; i++) {
+  anim.addKeyframe(i / 30, { Time: i });
+}
+anim.save({ duration: 3.5, fps: 30, loop: true });
+```
+
+#### Pathfinding Algorithm
+
+```javascript
+const step = slider('Step', 0, 30, 0);
+
+precompute((saveFrame) => {
+  const grid = createGrid(10, 10);
+  const start = { x: 0, y: 0 };
+  const goal = { x: 9, y: 9 };
+  const visited = [];
+  const openSet = [start];
+
+  let frame = 0;
+  saveFrame(frame++, { visited: [], current: start });
+
+  while (openSet.length > 0 && frame <= 30) {
+    const current = openSet.shift();
+    visited.push(current);
+
+    saveFrame(frame++, {
+      visited: [...visited],
+      current,
+      openSet: [...openSet]
+    });
+
+    if (current.x === goal.x && current.y === goal.y) break;
+
+    getNeighbors(current, grid).forEach(n => {
+      if (!visited.find(v => v.x === n.x && v.y === n.y)) {
+        openSet.push(n);
+      }
+    });
+  }
+
+  // Pad to 30 frames
+  while (frame <= 30) {
+    saveFrame(frame++, { visited, current: goal });
+  }
+});
+
+render((data) => {
+  const svg = d3.select(output).append('svg')
+    .attr('width', 400).attr('height', 400);
+
+  // Draw grid cells
+  data.visited.forEach(cell => {
+    svg.append('rect')
+      .attr('x', cell.x * 40).attr('y', cell.y * 40)
+      .attr('width', 38).attr('height', 38)
+      .attr('fill', '#bfdbfe');
+  });
+
+  // Draw current cell
+  if (data.current) {
+    svg.append('rect')
+      .attr('x', data.current.x * 40).attr('y', data.current.y * 40)
+      .attr('width', 38).attr('height', 38)
+      .attr('fill', '#3b82f6');
+  }
+});
+```
+
+### Troubleshooting
+
+**"No frame data available for frame X"**
+
+**Cause:** `saveFrame()` wasn't called for all frame indices.
+
+**Solution:** Ensure contiguous frames starting at 0:
+```javascript
+precompute((saveFrame) => {
+  for (let i = 0; i <= maxFrame; i++) {  // ✓ All frames
+    saveFrame(i, compute(i));
+  }
+});
+```
+
+**Animation stutters/drops frames**
+
+**Possible causes:**
+1. Render function too slow (>16ms)
+2. Too much data stored per frame
+3. Complex D3 rendering
+
+**Debug:**
+```javascript
+render((data) => {
+  const start = performance.now();
+  // Your render code...
+  const duration = performance.now() - start;
+  console.log(`Render took ${duration.toFixed(2)}ms`);
+});
+```
+
+**Target:** <10ms for smooth 60fps
+
+**Solutions:**
+- Simplify D3 rendering (fewer elements)
+- Use Canvas instead of SVG for 1000+ elements
+- Store pre-computed paths/shapes in cache
+
+**Changing control doesn't update animation**
+
+**Expected behavior:**
+1. Change control value (e.g., Learning Rate)
+2. Hit "Refresh" button on the visualization
+3. Precompute runs again with new value
+4. New animation generated
+
+This is automatic — the system detects when you're NOT in an animation frame and clears the cache to force full re-execution.
+
 ## Technical Architecture
 
 ### Type Definitions

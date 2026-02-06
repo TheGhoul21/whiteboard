@@ -20,6 +20,27 @@ npm run tauri:dev
 
 See [TAURI_README.md](./TAURI_README.md) for complete setup, build instructions, and OBS integration guide.
 
+### 📦 Download & Installation
+
+**[Download the latest release](https://github.com/TheGhoul21/whiteboard/releases/latest)**
+
+- **macOS**: Download the `.dmg` file
+- **Windows**: Download the `.exe` installer
+- **Linux**: Download the `.deb` or `.AppImage`
+
+#### macOS Security Warning
+
+Apple will block the app saying "cannot verify it is free of malware" because this free software isn't signed with a $99/year Apple Developer certificate.
+
+**To open the app:**
+1. Right-click `Whiteboard.app` → click **"Open"**
+2. Click **"Open"** again in the warning dialog
+
+Or remove the quarantine flag:
+```bash
+xattr -cr /Applications/Whiteboard.app
+```
+
 ## ✨ Key Features
 
 ### 🖌️ Drawing & Tools

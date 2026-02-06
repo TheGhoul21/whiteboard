@@ -64,7 +64,7 @@ function sprayDots(stroke: number[][], size: number): string {
   const parts: string[] = [];
   // Fixed stride: each candidate index is absolute, so dots don't shift as stroke grows.
   // Leave one stride's worth of headroom at the end (keeps the taper region clean).
-  const stride = 8; // Reduced from 12 for more density
+  const stride = 5; // More frequent sprinkles for splash effect
 
   for (let i = stride; i < stroke.length - stride; i += stride) {
     // Always consume exactly 4 values per position — keeps the PRNG sequence
@@ -74,12 +74,12 @@ function sprayDots(stroke: number[][], size: number): string {
     const distR = rand();
     const sizeR = rand();
 
-    if (roll < 0.25) continue; // Reduced from 0.5 - now ~75% of candidates are drawn
+    if (roll < 0.15) continue; // ~85% of candidates are drawn for nice splash
 
     const dist = size * 0.5 + distR * size * 1.0; // Slightly closer to the stroke
     const x    = stroke[i][0] + Math.cos(angle) * dist;
     const y    = stroke[i][1] + Math.sin(angle) * dist;
-    const r    = size * 0.15 + sizeR * sizeR * size * 0.65; // Significantly larger dots
+    const r    = size * 0.05 + sizeR * sizeR * size * 0.25; // Smaller dots for subtle splash effect
 
     parts.push(
       `M ${(x - r).toFixed(2)} ${y.toFixed(2)} ` +
@@ -95,11 +95,11 @@ function sprayDots(stroke: number[][], size: number): string {
 export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: boolean = true): string {
   if (stroke.length === 0) return '';
 
-  // Handle single point (dot) - create a circular dot
+  // Handle single point (dot) - create a circular dot (slightly smaller)
   if (stroke.length === 1) {
     const x = stroke[0][0];
     const y = stroke[0][1];
-    const r = size * 0.55;
+    const r = size * 0.45; // Reduced from 0.55 for smaller dots
     return `M ${x - r} ${y} A ${r} ${r} 0 1 0 ${x + r} ${y} A ${r} ${r} 0 1 0 ${x - r} ${y} Z`;
   }
 
@@ -117,7 +117,7 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
       // Center of the dot
       const cx = (first[0] + last[0]) / 2;
       const cy = (first[1] + last[1]) / 2;
-      const r = size * 0.55;
+      const r = size * 0.45; // Reduced from 0.55 for smaller dots
       return `M ${cx - r} ${cy} A ${r} ${r} 0 1 0 ${cx + r} ${cy} A ${r} ${r} 0 1 0 ${cx - r} ${cy} Z`;
     }
   }

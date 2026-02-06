@@ -636,7 +636,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     const pointerPos = stage.getPointerPosition();
     if (!pos || !pointerPos) return;
 
-    if (e.evt instanceof MouseEvent && e.evt.button === 2) {
+    // Right-click or middle-click to pan (Windows/cross-platform compatibility)
+    if (e.evt instanceof MouseEvent && (e.evt.button === 1 || e.evt.button === 2)) {
       isPanning.current = true;
       lastPointerPos.current = pointerPos;
       return;

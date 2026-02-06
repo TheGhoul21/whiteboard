@@ -53,6 +53,29 @@ const DEFAULT_SIZES: Record<ToolType, number> = {
    'hand': 0
 };
 
+// Color palettes (must match Toolbar.tsx)
+const LIGHT_COLORS = [
+  '#2E3440',  // Slate Gray
+  '#BF616A',  // Muted Rose
+  '#D08770',  // Soft Orange
+  '#A3BE8C',  // Sage Green
+  '#5E81AC',  // Denim Blue
+  '#B48EAD',  // Dusty Purple
+  '#88C0D0',  // Soft Cyan
+  '#4C566A',  // Cool Gray
+];
+
+const DARK_COLORS = [
+  '#ECEFF4',  // Snow White
+  '#D08770',  // Warm Coral
+  '#EBCB8B',  // Honey Yellow
+  '#A3BE8C',  // Moss Green
+  '#81A1C1',  // Periwinkle Blue
+  '#B48EAD',  // Lavender Mist
+  '#88C0D0',  // Powder Blue
+  '#D8DEE9',  // Pearl Gray
+];
+
 function App() {
   const [tool, setTool] = useState<ToolType>('pen');
   const previousToolRef = useRef<ToolType>('pen');
@@ -650,6 +673,18 @@ svg.append('path')
 
          // Tool Hotkeys - prevent tool switching during spacebar pan
         if (isSpacebarPressed) return;
+
+        // Shift+Number keys for color palette selection
+        if (e.shiftKey && e.key >= '1' && e.key <= '8') {
+          e.preventDefault();
+          const colorIndex = parseInt(e.key) - 1;
+          const isDarkBg = background === 'black' || background === 'black-grid' || background === 'black-lines';
+          const colorPalette = isDarkBg ? DARK_COLORS : LIGHT_COLORS;
+          if (colorIndex < colorPalette.length) {
+            setColor(colorPalette[colorIndex]);
+          }
+          return;
+        }
 
         // Number keys for primary tools
         if (e.key === '1') { e.preventDefault(); setTool('select'); return; }

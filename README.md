@@ -21,7 +21,7 @@ Paste rich content directly onto the board with **Cmd+V**:
 *   **PDF Import:** Upload PDFs to render pages vertically on the canvas (auto-scaled to 50% screen width for readability).
 *   **Images:** Paste images directly from your clipboard.
 
-### 🛠️ productivity
+### 🛠️ Productivity
 *   **Minimap:** Real-time navigation map showing all content and current viewport.
 *   **Bookmarks (Frames):** Save and jump to specific viewports (e.g., "Intro", "Chapter 1").
 *   **Selection:** 
@@ -29,6 +29,15 @@ Paste rich content directly onto the board with **Cmd+V**:
     *   **Multi-Select:** Hold `Shift` to add to selection.
     *   **Recolor:** Select objects and click a palette color to update them all instantly.
 *   **Undo/Redo:** Robust history system (`Cmd+Z` / `Cmd+Y`).
+
+### 🎬 Animations (NEW!)
+*   **Keyframe-Based Animations:** Record control changes over time to create smooth animations.
+*   **Animation Controls:** Rewind, step forward/backward, play/pause, and adjustable playback speed (0.25x-2x).
+*   **Visual Timeline:** See and navigate keyframes with clickable markers.
+*   **Live Updates:** Auto-update visualizations when adjusting controls for rapid iteration.
+*   **Perfect for Educational Content:** Create animated explanations of ML algorithms, math concepts, and more!
+
+📖 **[See Animation Guide →](client/docs/ANIMATIONS.md)**
 
 ## 🚀 Getting Started
 
@@ -80,11 +89,17 @@ Open `http://localhost:5173` in your browser.
 | **Multi-Select** | `Shift + Click` / `Shift + Drag` |
 | **Edit Code Block** | `Double Click` |
 
+## 📚 Documentation
+
+*   **[Creating Animations](client/docs/ANIMATIONS.md)** - Complete guide to creating animated educational content
+*   **[Code Blocks](client/docs/CODE_BLOCKS.md)** - Reference for using executable code blocks and d3.js visualizations
+
 ## 🛠️ Tech Stack
 
 *   **Frontend:** React, TypeScript, Vite, Tailwind CSS
 *   **Canvas Engine:** React-Konva (Konva.js)
 *   **Rendering:** KaTeX (Math), React Syntax Highlighter (Code), Perfect Freehand (Ink)
+*   **Visualizations:** D3.js for data-driven graphics
 *   **Backend:** Node.js, Express (for saving/loading boards)
 
 ## 📄 License

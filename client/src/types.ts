@@ -141,6 +141,7 @@ export interface CodeBlockObj {
   executionContext?: {
     vizId: string;  // Target visualization to update
     controlValues: Record<string, any>;  // Control values to use for this execution
+    animationTime?: number;  // When set, fast-path precompute render using this time
   };
 
   // Animation state
@@ -170,6 +171,9 @@ export interface D3VisualizationObj {
   // Snapshot of control values when this visualization was created
   // Each visualization has its own independent control values
   controlValues?: Record<string, any>;
+
+  // Animation specific to this visualization (for per-viz playback)
+  animation?: Animation;
 }
 
 // Bookmarks / Frames

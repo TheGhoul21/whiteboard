@@ -2,10 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Group, Rect } from 'react-konva';
 import { Html } from 'react-konva-utils';
 import Konva from 'konva';
-import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType, Animation, BoardAPI } from '../types';
-import { ControlWidget } from './ControlWidget';
-import { AnimationPlayer } from './AnimationPlayer';
+import type { CodeBlockObj, CodeBlockControl, D3VisualizationObj, ToolType, BoardAPI } from '../types';
 import * as d3 from 'd3';
+import { PrecomputeRenderEngine } from '../utils/PrecomputeRenderEngine';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
@@ -19,11 +18,7 @@ interface CodeBlockObjectProps {
   draggable?: boolean;
   onUpdate: (updates: Partial<CodeBlockObj>) => void;
   onCreateVisualization: (viz: D3VisualizationObj, codeBlockUpdates: Partial<CodeBlockObj>) => void;
-  onUpdateVisualization: (updates: { id: string; content: string }) => void;
   tool?: ToolType;
-  animation?: Animation;
-  onSaveKeyframe?: () => void;
-  onDeleteKeyframe?: (keyframeId: string) => void;
   boardAPI?: BoardAPI;
 }
 
@@ -34,11 +29,7 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   draggable = true,
   onUpdate,
   onCreateVisualization,
-  onUpdateVisualization,
   tool = 'select',
-  animation,
-  onSaveKeyframe,
-  onDeleteKeyframe,
   boardAPI
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -50,12 +41,32 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   const isSelectMode = tool === 'select';
   const editorViewRef = useRef<EditorView | null>(null);
 
+  const activeRafsRef = useRef<Set<number>>(new Set());
+  const renderCallbackRef = useRef<((values: Record<string, any>) => void) | null>(null);
+  const outputRef = useRef<HTMLDivElement | null>(null);
+  const precomputeRenderEngineRef = useRef<any>(null);
+
   // Watch for external execution triggers from visualization controls
   useEffect(() => {
     if (obj.executionTrigger && obj.executionTrigger > (obj.lastExecuted || 0)) {
-      executeCode();
+      // Pass executionContext control values to prevent code block controls from being modified
+      const controlValuesOverride = obj.executionContext?.controlValues;
+      executeCode(controlValuesOverride);
     }
   }, [obj.executionTrigger]);
+
+  // Clean up RAFs when component unmounts
+  useEffect(() => {
+    return () => {
+      activeRafsRef.current.forEach(id => window.cancelAnimationFrame(id));
+      activeRafsRef.current.clear();
+      // Clear precompute/render engine
+      if (precomputeRenderEngineRef.current) {
+        precomputeRenderEngineRef.current.clear();
+        precomputeRenderEngineRef.current = null;
+      }
+    };
+  }, []);
 
   // Initialize CodeMirror editor
   useEffect(() => {
@@ -123,291 +134,108 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
     }
   };
 
-  const executeCode = () => {
+  const executeCode = (controlValuesOverride?: Record<string, any>, includeControlsUpdate = false) => {
     console.log('[CodeBlock] Starting execution...', obj.id);
     setIsExecuting(true);
 
-    // Use setTimeout to avoid blocking and ensure state updates properly
-    setTimeout(() => {
-      try {
-        // 1. Create output container
-        const outputDiv = document.createElement('div');
-        outputDiv.id = 'output';
+    // Cancel any running animation frames from previous execution
+    if (activeRafsRef.current.size > 0) {
+      // console.log(`[CodeBlock] Cleaning up ${activeRafsRef.current.size} active RAFs`);
+      activeRafsRef.current.forEach(id => window.cancelAnimationFrame(id));
+      activeRafsRef.current.clear();
+    }
 
-        // 2. Setup sandbox with control values
-        // If executionContext is set, use those control values instead of obj.controls values
-        const sourceControlValues = obj.executionContext
-          ? obj.executionContext.controlValues
-          : obj.controls?.reduce((acc, c) => {
-              acc[c.label] = c.value;
-              return acc;
-            }, {} as Record<string, any>) || {};
 
-        const controlValues = new Map(
-          Object.entries(sourceControlValues)
-        );
 
-        const controls: CodeBlockControl[] = [];
+    // Execute immediately (synchronously) to prevent animation frame pile-up
+    try {
+      // FAST PATH: Animation frame or control update that can skip full re-execution.
+      // Only activates when animationTime is present (animation-driven) OR a render
+      // callback is registered.  User-initiated control changes (no animationTime)
+      // fall through to the slow path so precomputed data is re-generated.
+      if (controlValuesOverride && outputRef.current) {
+        const isAnimationFrame = obj.executionContext?.animationTime !== undefined;
 
-        const sandbox = {
-          output: outputDiv,
-          d3: d3,
+        // Precompute/render engine fast path (animation frames only)
+        if (isAnimationFrame && precomputeRenderEngineRef.current?.isReady) {
+          const fps = precomputeRenderEngineRef.current.fps;
+          const frameIndex = Math.floor(obj.executionContext!.animationTime! * fps);
+          precomputeRenderEngineRef.current.executeRender(frameIndex);
 
-          slider: (label: string, min: number, max: number, initial: number, step = 1) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'slider',
-              label,
-              value,
-              min,
-              max,
-              step
-            });
-            return value;
-          },
-
-          input: (label: string, initial: string) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'text',
-              label,
-              value
-            });
-            return value;
-          },
-
-          checkbox: (label: string, initial: boolean) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'checkbox',
-              label,
-              value
-            });
-            return value;
-          },
-
-          radio: (label: string, options: string[], initial: string) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'radio',
-              label,
-              value,
-              options
-            });
-            return value;
-          },
-
-          color: (label: string, initial: string) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'color',
-              label,
-              value
-            });
-            return value;
-          },
-
-          select: (label: string, options: string[], initial: string) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'select',
-              label,
-              value,
-              options
-            });
-            return value;
-          },
-
-          range: (label: string, min: number, max: number, initialMin: number, initialMax: number, step = 1) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : { min: initialMin, max: initialMax };
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'range',
-              label,
-              value,
-              min,
-              max,
-              step
-            });
-            return value;
-          },
-
-          button: (label: string) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : { clickCount: 0, lastClicked: null };
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'button',
-              label,
-              value
-            });
-            return value;
-          },
-
-          toggle: (label: string, initial: boolean) => {
-            const existing = controlValues.get(label);
-            const value = existing !== undefined ? existing : initial;
-            controls.push({
-              id: `${label}-${Date.now()}-${Math.random()}`,
-              type: 'toggle',
-              label,
-              value
-            });
-            return value;
-          },
-
-          // Programmatic animation creation
-          animate: (keyframeSpecs: Array<{ time: number, values: Record<string, any> }>, options?: { duration?: number, fps?: number, loop?: boolean }) => {
-            // Store animation spec to be processed after execution
-            (sandbox as any).__animationSpec = {
-              keyframes: keyframeSpecs,
-              options: options || {}
-            };
-          },
-
-          log: (msg: any) => console.log('[CodeBlock]', msg),
-
-          // Board API for reading/writing whiteboard elements
-          board: (() => {
-            console.log('[CodeBlock] Setting up board API, boardAPI exists:', !!boardAPI);
-            return boardAPI || {
-            getImages: () => [],
-            getTexts: () => [],
-            getShapes: () => [],
-            getLatex: () => [],
-            getStrokes: () => [],
-            getVisualizations: () => [],
-            getAll: () => ({ images: [], texts: [], shapes: [], latex: [], strokes: [], visualizations: [] }),
-            addImage: () => '',
-            addText: () => '',
-            addShape: () => '',
-            addLatex: () => '',
-            updateElement: () => {},
-            deleteElement: () => {},
-            getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
-            getCodeBlockPosition: () => ({ x: 0, y: 0, width: 500, height: 400 })
-          };
-          })()
-        };
-
-        // 3. Execute user code
-        console.log('[CodeBlock] Executing user code...');
-        const userFunction = new Function(
-          'output', 'd3', 'slider', 'input', 'checkbox',
-          'radio', 'color', 'select', 'range', 'button', 'toggle', 'animate', 'log', 'board',
-          obj.code
-        );
-
-        userFunction(
-          sandbox.output,
-          sandbox.d3,
-          sandbox.slider,
-          sandbox.input,
-          sandbox.checkbox,
-          sandbox.radio,
-          sandbox.color,
-          sandbox.select,
-          sandbox.range,
-          sandbox.button,
-          sandbox.toggle,
-          sandbox.animate,
-          sandbox.log,
-          sandbox.board
-        );
-
-        // 4. Extract output content
-        const outputContent = outputDiv.innerHTML;
-        console.log('[CodeBlock] Output generated, length:', outputContent.length);
-
-        // 5. Create or update D3Visualization
-
-        // If executionContext is set, update specific visualization and don't modify controls
-        if (obj.executionContext) {
-          console.log('[CodeBlock] Updating specific visualization:', obj.executionContext.vizId);
-          onUpdateVisualization({
-            id: obj.executionContext.vizId,
-            content: outputContent
-          });
-
-          // Clear execution context and update state (without modifying controls)
-          onUpdate({
-            executionContext: undefined,
-            error: undefined,
-            lastExecuted: Date.now()
-          });
-        } else if (obj.outputId && !obj.appendMode) {
-          console.log('[CodeBlock] Updating existing visualization:', obj.outputId);
-          // Update existing visualization
-          onUpdateVisualization({
-            id: obj.outputId,
-            content: outputContent
-          });
-
-          // Update controls and state
-          onUpdate({
-            controls: controls,
-            error: undefined,
-            lastExecuted: Date.now()
-          });
-        } else {
-          console.log('[CodeBlock] Creating new visualization (append mode: ' + obj.appendMode + ')');
-          // Create new visualization to the right of CodeBlock
-          // In append mode, stack vertically below existing ones
-          let vizX = obj.x + obj.width + 20;
-          let vizY = obj.y;
-
-          if (obj.appendMode && obj.outputId) {
-            // Find position below existing visualizations from this codeblock
-            vizY = obj.y + 370; // Height + spacing
+          const outputContent = outputRef.current.innerHTML;
+          const vizId = obj.executionContext?.vizId || obj.outputId;
+          if (vizId) {
+            onUpdate({
+              lastExecuted: Date.now(),
+              executionContext: undefined,
+              __visualizationUpdate: { id: vizId, content: outputContent }
+            } as any);
           }
-
-          // Capture current control values as a snapshot for this visualization
-          const capturedControlValues: Record<string, any> = {};
-          controls.forEach(c => {
-            capturedControlValues[c.label] = c.value;
-          });
-
-          const newVizId = `viz-${Date.now()}`;
-          const newViz: D3VisualizationObj = {
-            id: newVizId,
-            type: 'd3viz',
-            x: vizX,
-            y: vizY,
-            width: 450,
-            height: 350,
-            content: outputContent,
-            sourceCodeBlockId: obj.id,
-            controlValues: capturedControlValues
-          };
-
-          // Pass both the viz AND the codeblock updates together
-          // This ensures a single atomic state update
-          onCreateVisualization(newViz, {
-            controls: controls,
-            error: undefined,
-            lastExecuted: Date.now(),
-            // In append mode, keep the first outputId as reference, but we track all via a different mechanism
-            outputId: obj.appendMode ? (obj.outputId || newVizId) : newVizId
-          });
+          setIsExecuting(false);
+          return;
         }
 
-        // 6. Process programmatic animation if specified
-        const animationSpec = (sandbox as any).__animationSpec;
+        // Simple render-callback fast path (animation frames only)
+        if (isAnimationFrame && renderCallbackRef.current) {
+          renderCallbackRef.current(controlValuesOverride);
+
+          const outputContent = outputRef.current.innerHTML;
+          const vizId = obj.executionContext?.vizId || obj.outputId;
+          if (vizId) {
+            onUpdate({
+              lastExecuted: Date.now(),
+              executionContext: undefined,
+              __visualizationUpdate: { id: vizId, content: outputContent }
+            } as any);
+          }
+          setIsExecuting(false);
+          return;
+        }
+      }
+
+      // SLOW PATH: Full Execution (Setup)
+      // Reset render callback for new run
+      renderCallbackRef.current = null;
+      
+      // Reset precompute/render engine for full re-execution
+      if (precomputeRenderEngineRef.current) {
+        precomputeRenderEngineRef.current.clear();
+        precomputeRenderEngineRef.current = null;
+      }
+
+      // 1. Create output container
+      const outputDiv = document.createElement('div');
+      outputDiv.id = 'output';
+      outputRef.current = outputDiv; // Persist for fast path
+
+      // 2. Setup sandbox with control values
+      // When animating, the override only contains the *animated* controls.
+      // Merge it on top of the current control values so that controls the
+      // user tweaked manually (but that are not part of the animation) keep
+      // their value instead of silently resetting to their initial default.
+      const currentControlValues = obj.controls?.reduce((acc, c) => {
+        acc[c.label] = c.value;
+        return acc;
+      }, {} as Record<string, any>) || {};
+
+      const sourceControlValues = controlValuesOverride
+        ? { ...currentControlValues, ...controlValuesOverride }
+        : (obj.executionContext ? obj.executionContext.controlValues : undefined) ||
+          currentControlValues;
+
+      const controlValues = new Map(
+        Object.entries(sourceControlValues)
+      );
+
+      const controls: CodeBlockControl[] = [];
+
+      // Helper to process animation spec (shared by sync execution and async save)
+      const processAnimation = (animationSpec: any) => {
         if (animationSpec && animationSpec.keyframes && animationSpec.keyframes.length > 0) {
-          console.log('[CodeBlock] Processing programmatic animation with', animationSpec.keyframes.length, 'keyframes');
+          console.log('[CodeBlock] Processing programmatic animation:', {
+            keyframes: animationSpec.keyframes.length,
+            duration: animationSpec.options?.duration
+          });
 
           // Convert keyframe specs to proper Keyframe objects
           const keyframes = animationSpec.keyframes.map((spec: any) => ({
@@ -420,9 +248,9 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
           // Calculate max time for duration
           const maxTime = Math.max(...keyframes.map((kf: any) => kf.time), 0);
 
-          // Create or update animation
+          // Create new animation (Always generate new ID to force update)
           const newAnimation = {
-            id: obj.animationId || `anim-${Date.now()}`,
+            id: `anim-${Date.now()}-${Math.random()}`,
             codeBlockId: obj.id,
             keyframes: keyframes,
             duration: animationSpec.options?.duration || maxTime + 1,
@@ -430,43 +258,394 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
             loop: animationSpec.options?.loop || false
           };
 
-          // Notify parent to update animation
-          // We'll use a special update flag to signal animation creation
+          return newAnimation;
+        }
+        return null;
+      };
+
+      const sandbox = {
+        output: outputDiv,
+        d3: d3,
+
+        slider: (label: string, min: number, max: number, initial: number, step = 1) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'slider',
+            label,
+            value,
+            min,
+            max,
+            step
+          });
+          return value;
+        },
+
+        input: (label: string, initial: string) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'text',
+            label,
+            value
+          });
+          return value;
+        },
+
+        checkbox: (label: string, initial: boolean) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'checkbox',
+            label,
+            value
+          });
+          return value;
+        },
+
+        radio: (label: string, options: string[], initial: string) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'radio',
+            label,
+            value,
+            options
+          });
+          return value;
+        },
+
+        color: (label: string, initial: string) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'color',
+            label,
+            value
+          });
+          return value;
+        },
+
+        select: (label: string, options: string[], initial: string) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'select',
+            label,
+            value,
+            options
+          });
+          return value;
+        },
+
+        range: (label: string, min: number, max: number, initialMin: number, initialMax: number, step = 1) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : { min: initialMin, max: initialMax };
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'range',
+            label,
+            value,
+            min,
+            max,
+            step
+          });
+          return value;
+        },
+
+        button: (label: string) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : { clickCount: 0, lastClicked: null };
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'button',
+            label,
+            value
+          });
+          return value;
+        },
+
+        toggle: (label: string, initial: boolean) => {
+          const existing = controlValues.get(label);
+          const value = existing !== undefined ? existing : initial;
+          controls.push({
+            id: `${label}-${Date.now()}-${Math.random()}`,
+            type: 'toggle',
+            label,
+            value
+          });
+          return value;
+        },
+
+        // Programmatic animation creation
+        animate: (keyframeSpecs: Array<{ time: number, values: Record<string, any> }>, options?: { duration?: number, fps?: number, loop?: boolean }) => {
+          // Store animation spec to be processed after execution
+          (sandbox as any).__animationSpec = {
+            keyframes: keyframeSpecs,
+            options: options || {}
+          };
+        },
+
+        log: (msg: any) => console.log('[CodeBlock]', msg),
+
+        // Board API for reading/writing whiteboard elements
+        board: (() => {
+          console.log('[CodeBlock] Setting up board API, boardAPI exists:', !!boardAPI);
+          return boardAPI || {
+            getImages: () => [],
+            getTexts: () => [],
+            getShapes: () => [],
+            getLatex: () => [],
+            getStrokes: () => [],
+            getVisualizations: () => [],
+            getAll: () => ({ images: [], texts: [], shapes: [], latex: [], strokes: [], visualizations: [] }),
+            addImage: () => '',
+            addText: () => '',
+            addShape: () => '',
+            addLatex: () => '',
+            updateElement: () => { },
+            deleteElement: () => { },
+            getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+            getCodeBlockPosition: () => ({ x: 0, y: 0, width: 500, height: 400 })
+          };
+        })(),
+
+        // Better Programmatic Animation Builder
+        createAnimation: () => {
+          const frames: Array<{ time: number, values: Record<string, any>, label?: string }> = [];
+          return {
+            addKeyframe: (time: number, values: Record<string, any>, label?: string) => {
+              frames.push({ time, values, label });
+            },
+            save: (options?: { duration?: number, fps?: number, loop?: boolean }) => {
+              (sandbox as any).__animationSpec = {
+                keyframes: frames,
+                options: options || {}
+              };
+            }
+          };
+        },
+
+        // Compute/Render Separation API for High-Performance Animations
+        precompute: (fn: (registerFrame: (index: number, data: any) => void) => void) => {
+          if (!precomputeRenderEngineRef.current) {
+            precomputeRenderEngineRef.current = new PrecomputeRenderEngine({
+              totalFrames: 100,
+              fps: 60
+            });
+          }
+          precomputeRenderEngineRef.current.precompute(fn);
+        },
+
+        render: (fn: any) => {
+          // If precompute() was already called, register as the engine's render.
+          // Otherwise fall back to the simple per-frame render-callback path.
+          if (precomputeRenderEngineRef.current) {
+            precomputeRenderEngineRef.current.render(fn);
+          } else {
+            renderCallbackRef.current = fn;
+          }
+        },
+
+        // Safe requestAnimationFrame that gets cleaned up on re-run
+        requestAnimationFrame: (callback: FrameRequestCallback) => {
+          const id = window.requestAnimationFrame((time) => {
+            // Remove from set when executed
+            activeRafsRef.current.delete(id);
+            callback(time);
+          });
+          activeRafsRef.current.add(id);
+          return id;
+        },
+        cancelAnimationFrame: (id: number) => {
+          window.cancelAnimationFrame(id);
+          activeRafsRef.current.delete(id);
+        }
+      };
+
+      // 3. Execute user code
+      console.log('[CodeBlock] Executing user code...');
+      const userFunction = new Function(
+        'output', 'd3', 'slider', 'input', 'checkbox',
+        'radio', 'color', 'select', 'range', 'button', 'toggle', 'animate', 'createAnimation', 'requestAnimationFrame', 'cancelAnimationFrame', 'render', 'log', 'board', 'precompute',
+        obj.code
+      );
+
+      userFunction(
+        sandbox.output,
+        sandbox.d3,
+        sandbox.slider,
+        sandbox.input,
+        sandbox.checkbox,
+        sandbox.radio,
+        sandbox.color,
+        sandbox.select,
+        sandbox.range,
+        sandbox.button,
+        sandbox.toggle,
+        sandbox.animate,
+        sandbox.createAnimation,
+        sandbox.requestAnimationFrame,
+        sandbox.cancelAnimationFrame,
+        sandbox.render,
+        sandbox.log,
+        sandbox.board,
+        sandbox.precompute
+      );
+
+      // 4. Execute precompute/render if using the new API
+      if (precomputeRenderEngineRef.current) {
+        console.log('[CodeBlock] Executing precompute phase...');
+        const capturedControlValues: Record<string, any> = {};
+        controls.forEach(c => {
+          capturedControlValues[c.label] = c.value;
+        });
+        
+        console.log('[CodeBlock] Controls captured:', capturedControlValues);
+        
+        const success = precomputeRenderEngineRef.current.executePrecompute(capturedControlValues);
+        console.log('[CodeBlock] Precompute success:', success);
+        console.log('[CodeBlock] Frame cache size:', precomputeRenderEngineRef.current.getFrameCache().size);
+        
+        if (success) {
+          console.log('[CodeBlock] Executing initial render...');
+          const renderSuccess = precomputeRenderEngineRef.current.executeRender(0);
+          console.log('[CodeBlock] Initial render success:', renderSuccess);
+        }
+      }
+
+      // 5. Extract output content
+      const outputContent = outputDiv.innerHTML;
+      console.log('[CodeBlock] Output generated, length:', outputContent.length);
+
+      // 5. Create or update D3Visualization
+
+      // 5. Atomic Update Generation
+      const codeBlockUpdates: any = {
+        lastExecuted: Date.now(),
+        error: undefined
+      };
+
+      if (!controlValuesOverride || includeControlsUpdate) {
+        codeBlockUpdates.controls = controls;
+      }
+
+      // Process animations unless we're in a fast-path (animationTime present)
+      // Refresh and control changes should regenerate the animation
+      const isAnimationFrame = obj.executionContext?.animationTime !== undefined;
+      if (!isAnimationFrame) {
+        const animationSpec = (sandbox as any).__animationSpec;
+        const newAnimation = processAnimation(animationSpec);
+
+        if (newAnimation) {
+          codeBlockUpdates.animationId = newAnimation.id;
+          // Pass magic prop for Whiteboard to handle update
+          codeBlockUpdates.__programmaticAnimation = newAnimation;
+        }
+      }
+
+      // If executionContext is set, update specific visualization and don't modify controls
+      if (obj.executionContext) {
+        console.log('[CodeBlock] Updating specific visualization:', obj.executionContext.vizId);
+        // Single atomic update: viz content + codeblock state + clear executionContext
+        // Using __visualizationUpdate avoids the React 18 batching race where
+        // a separate onUpdateVisualization call gets clobbered by the onUpdate call.
+        onUpdate({
+          ...codeBlockUpdates,
+          executionContext: undefined,
+          __visualizationUpdate: {
+            id: obj.executionContext.vizId,
+            content: outputContent
+          }
+        } as any);
+      } else if (obj.outputId && !obj.appendMode) {
+        console.log('[CodeBlock] Updating existing visualization:', obj.outputId);
+
+        // Pass merged updates (controls + animation + status + visualization content)
+        // We need a way to pass visualization updates through onUpdate or similar mechanism
+        // to avoid race conditions with multiple App.setState calls.
+
+        // Strategy: Use onUpdate with a special field for visualization updates
+        // This requires Whiteboard to handle it.
+
+        const combinedUpdates = {
+          ...codeBlockUpdates,
+          __visualizationUpdate: {
+            id: obj.outputId,
+            content: outputContent
+          }
+        };
+
+        if (!controlValuesOverride || includeControlsUpdate) {
+          onUpdate(combinedUpdates);
+        } else {
+          // Animation-driven override: only update visualization content
           onUpdate({
-            animationId: newAnimation.id,
-            __programmaticAnimation: newAnimation
+            __visualizationUpdate: {
+              id: obj.outputId,
+              content: outputContent
+            }
           } as any);
         }
+      } else {
+        console.log('[CodeBlock] Creating new visualization (append mode: ' + obj.appendMode + ')');
+        // Create new visualization to the right of CodeBlock
+        // In append mode, stack vertically below existing ones
+        let vizX = obj.x + obj.width + 20;
+        let vizY = obj.y;
 
-        console.log('[CodeBlock] Execution completed successfully');
-        setIsExecuting(false);
-      } catch (error) {
-        console.error('[CodeBlock] Execution error:', error);
-        onUpdate({
-          error: error instanceof Error ? error.message : String(error),
-          lastExecuted: Date.now()
+        if (obj.appendMode && obj.outputId) {
+          // Find position below existing visualizations from this codeblock
+          vizY = obj.y + 370; // Height + spacing
+        }
+
+        // Capture current control values as a snapshot for this visualization
+        const capturedControlValues: Record<string, any> = {};
+        controls.forEach(c => {
+          capturedControlValues[c.label] = c.value;
         });
-        setIsExecuting(false);
+
+        const newVizId = `viz-${Date.now()}`;
+        const newViz: D3VisualizationObj = {
+          id: newVizId,
+          type: 'd3viz',
+          x: vizX,
+          y: vizY,
+          width: 450,
+          height: 350,
+          content: outputContent,
+          sourceCodeBlockId: obj.id,
+          controlValues: capturedControlValues
+        };
+
+        // Pass both the viz AND the codeblock updates together
+        // This ensures a single atomic state update
+        onCreateVisualization(newViz, {
+          ...codeBlockUpdates,
+          outputId: obj.appendMode ? (obj.outputId || newVizId) : newVizId
+        });
       }
-    }, 10);
-  };
 
-  const handleControlChange = (controlId: string, newValue: any) => {
-    console.log('[CodeBlock] Control changed:', controlId, newValue);
-
-    // Update controls only - NO auto re-execution
-    // User must click "Run" to see changes
-    const updatedControls = obj.controls?.map(c =>
-      c.id === controlId ? { ...c, value: newValue } : c
-    );
-
-    onUpdate({ controls: updatedControls });
-
-    // TODO: Re-enable auto-execution when history system is fixed
-    // For now, require manual "Run" click to avoid state corruption
+      console.log('[CodeBlock] Execution completed successfully');
+      setIsExecuting(false);
+    } catch (error) {
+      console.error('[CodeBlock] Execution error:', error);
+      onUpdate({
+        error: error instanceof Error ? error.message : String(error),
+        lastExecuted: Date.now()
+      });
+      setIsExecuting(false);
+    }
   };
 
   const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
     setResizeStartY(e.clientY);
@@ -575,7 +754,7 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 fontWeight: '500'
               }}
             >
-              ▶
+              Run
             </button>
 
             {/* Fold toggle */}
@@ -608,7 +787,7 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 fontSize: '14px'
               }}
             >
-              {obj.isFolded ? '▶' : '▼'}
+              {obj.isFolded ? 'Expand' : 'Collapse'}
             </button>
 
             {/* Append mode toggle */}
@@ -628,7 +807,7 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 fontSize: '14px'
               }}
             >
-              {obj.appendMode ? '⊕' : '↻'}
+              {obj.appendMode ? 'Append' : 'Replace'}
             </button>
 
             {/* Recording controls */}
@@ -654,60 +833,38 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 fontSize: '14px'
               }}
             >
-              {obj.isRecording ? '⏺' : '⏺'}
+              {obj.isRecording ? 'Stop' : 'Record'}
             </button>
-
-            {obj.isRecording && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSaveKeyframe?.();
-                }}
-                title="Add keyframe at current time"
-                style={{
-                  padding: '4px 8px',
-                  backgroundColor: '#dbeafe',
-                  color: '#1d4ed8',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '500'
-                }}
-              >
-                + KF
-              </button>
-            )}
 
             {obj.lastExecuted && !obj.error && (
               <span style={{ fontSize: '14px', color: '#10b981' }} title="Code executed successfully">
-                ✓
+                OK
               </span>
             )}
 
             {obj.error && (
               <span style={{ fontSize: '11px', color: '#ef4444' }} title={obj.error}>
-                ⚠ {obj.error.substring(0, 30)}{obj.error.length > 30 ? '...' : ''}
+                ERR {obj.error.substring(0, 30)}{obj.error.length > 30 ? '...' : ''}
               </span>
             )}
 
             <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#9ca3af' }}>
-              {isEditing ? '⌨ Cmd+Enter to run, Esc to exit' : '✎'}
+              {isEditing ? '[Cmd+Enter] Run [Esc] Exit' : '[Double-click] Edit'}
             </div>
           </div>
 
           {/* Content Area - hidden when folded */}
           {!obj.isFolded && (
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              flex: 1, 
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
               overflow: 'hidden',
-              pointerEvents: isEditing ? 'auto' : 'none' 
+              pointerEvents: isEditing ? 'auto' : 'none'
             }}>
               {/* Code Editor Area */}
-              <div style={{ 
-                flex: '0 0 auto', 
+              <div style={{
+                flex: '0 0 auto',
                 minHeight: '120px',
                 maxHeight: '250px',
                 overflow: 'auto',
@@ -745,51 +902,6 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
                 )}
               </div>
 
-              {/* Controls Area - always visible when controls exist */}
-              {obj.controls && obj.controls.length > 0 && (
-                <div
-                  style={{
-                    padding: '12px',
-                    backgroundColor: '#f9fafb',
-                    borderTop: '1px solid #d1d5db',
-                    pointerEvents: 'auto', // Controls can capture events
-                    flex: '1 1 auto', // Allow controls to grow and shrink
-                    minHeight: '80px',
-                    maxHeight: '200px', // Limit max height
-                    overflowY: 'auto', // Enable vertical scrolling
-                    overflowX: 'hidden' // Prevent horizontal scroll
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: '#6b7280' }}>
-                    🎮
-                  </div>
-                  {obj.controls.map((control) => (
-                    <ControlWidget
-                      key={control.id}
-                      control={control}
-                      onChange={(value) => handleControlChange(control.id, value)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Animation Player - when animation exists */}
-              {animation && animation.keyframes.length > 0 && obj.controls && (
-                <AnimationPlayer
-                  animation={animation}
-                  onUpdateControls={(values) => {
-                    // Update control values with interpolated values
-                    const updatedControls = obj.controls?.map(c => ({
-                      ...c,
-                      value: values[c.label] !== undefined ? values[c.label] : c.value
-                    }));
-                    onUpdate({ controls: updatedControls });
-                  }}
-                  onExecute={executeCode}
-                  onDeleteKeyframe={onDeleteKeyframe}
-                />
-              )}
             </div>
           )}
 

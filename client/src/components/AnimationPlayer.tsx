@@ -1,23 +1,45 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Animation, Keyframe } from '../types';
+import { valuesEqual } from '../utils/animationUtils';
 
 interface AnimationPlayerProps {
   animation: Animation;
+  baseControlValues?: Record<string, any>; // Current viz control values (user may have edited)
   onUpdateControls: (values: Record<string, any>) => void;
-  onExecute: () => void;
+  onExecute: (values?: Record<string, any>, time?: number) => void;
   onDeleteKeyframe?: (keyframeId: string) => void;
 }
 
 export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   animation,
+  baseControlValues = {},
   onUpdateControls,
   onExecute,
   onDeleteKeyframe
 }) => {
+  console.log('[AnimationPlayer] Render. ID:', animation.id, 'Duration:', animation.duration);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(0); // Authoritative time for animation loop
   const animationFrameRef = useRef<number>();
   const lastUpdateRef = useRef<number>(0);
+  const lastExecutedFrameRef = useRef<number>(-1);
+
+  // Sync ref when state changes externally (e.g. scrubbing) and not playing
+  useEffect(() => {
+    if (!isPlaying) {
+      currentTimeRef.current = currentTime;
+    }
+  }, [currentTime, isPlaying]);
+
+  // Reset state when animation object changes (ID change)
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    currentTimeRef.current = 0;
+    lastExecutedFrameRef.current = -1;
+    lastDispatchedValuesRef.current = {};
+  }, [animation.id]);
 
   // Interpolate between two values
   const interpolate = (val1: any, val2: any, t: number): any => {
@@ -97,34 +119,84 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
     return result;
   };
 
+  // Dirty-flag: stores the last set of values actually dispatched to onExecute.
+  // When interpolated values are identical (e.g. time is past the last keyframe
+  // and the output is frozen) we skip the expensive onExecute call entirely.
+  const lastDispatchedValuesRef = useRef<Record<string, any>>({});
+
+  const lastUIUpdateRef = useRef<number>(0);
+
+  // Keep refs for values read inside the RAF loop so the closure is never stale.
+  const animationRef = useRef(animation);
+  animationRef.current = animation;
+
+  const onExecuteRef = useRef(onExecute);
+  onExecuteRef.current = onExecute;
+
+  const onUpdateControlsRef = useRef(onUpdateControls);
+  onUpdateControlsRef.current = onUpdateControls;
+
   // Animation loop
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
 
-    const deltaTime = lastUpdateRef.current ? (timestamp - lastUpdateRef.current) / 1000 : 0;
+    // Use current animation object from Ref to avoid stale closures
+    const currentAnim = animationRef.current;
+
+    // Initialize lastUpdateRef if it's 0 (first frame safety)
+    if (!lastUpdateRef.current) {
+      lastUpdateRef.current = timestamp;
+    }
+
+    const deltaTime = (timestamp - lastUpdateRef.current) / 1000;
     lastUpdateRef.current = timestamp;
 
-    let newTime = currentTime + deltaTime;
+    // Prevent huge jumps if tab was inactive
+    if (deltaTime > 0.5) {
+      animationFrameRef.current = requestAnimationFrame(animate);
+      return;
+    }
+
+    let newTime = currentTimeRef.current + deltaTime;
 
     // Handle looping
-    if (newTime >= animation.duration) {
-      if (animation.loop) {
-        newTime = 0;
+    if (newTime >= currentAnim.duration) {
+      if (currentAnim.loop) {
+        newTime = newTime % currentAnim.duration;
       } else {
-        newTime = animation.duration;
+        newTime = currentAnim.duration;
         setIsPlaying(false);
       }
     }
 
+    currentTimeRef.current = newTime;
     setCurrentTime(newTime);
 
     // Update controls with interpolated values
     const interpolatedValues = getInterpolatedValues(newTime);
-    onUpdateControls(interpolatedValues);
 
-    // Trigger execution every frame (or at a lower rate for performance)
-    if (Math.floor(newTime * animation.fps) !== Math.floor(currentTime * animation.fps)) {
-      onExecute();
+    // Merge keyframe values on top of base control values so that controls
+    // the user manually edited (but that aren't animated) keep their value
+    const mergedValues = { ...baseControlValues, ...interpolatedValues };
+
+    // Throttle UI updates to avoid overloading React with re-renders
+    // Only update UI controls every ~50ms (20fps) or if stopped
+    if (timestamp - lastUIUpdateRef.current > 50 || !isPlaying) {
+      lastUIUpdateRef.current = timestamp;
+      onUpdateControlsRef.current(mergedValues);
+    }
+
+    // Trigger execution only when the discrete frame index advances AND the
+    // interpolated values actually changed (dirty flag).  After the last
+    // keyframe the values are frozen — skipping onExecute here avoids
+    // redundant re-renders for the remainder of the timeline.
+    const currentFrame = Math.floor(newTime * currentAnim.fps);
+    if (currentFrame !== lastExecutedFrameRef.current) {
+      lastExecutedFrameRef.current = currentFrame;
+      if (!valuesEqual(mergedValues, lastDispatchedValuesRef.current)) {
+        lastDispatchedValuesRef.current = mergedValues;
+        onExecuteRef.current(mergedValues, newTime);
+      }
     }
 
     if (isPlaying) {
@@ -136,6 +208,8 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   useEffect(() => {
     if (isPlaying) {
       lastUpdateRef.current = performance.now();
+      // Ensure ref is synced with state before starting
+      currentTimeRef.current = currentTime;
       animationFrameRef.current = requestAnimationFrame(animate);
     } else {
       if (animationFrameRef.current) {
@@ -157,19 +231,29 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   const handleStop = () => {
     setIsPlaying(false);
     setCurrentTime(0);
+    currentTimeRef.current = 0;
+    lastDispatchedValuesRef.current = {};
     if (animation.keyframes.length > 0) {
       const firstKf = [...animation.keyframes].sort((a, b) => a.time - b.time)[0];
-      onUpdateControls(firstKf.controlValues);
-      onExecute();
+      const mergedValues = { ...baseControlValues, ...firstKf.controlValues };
+      onUpdateControls(mergedValues);
+      onExecute(mergedValues, 0);
+      lastExecutedFrameRef.current = 0;
+      lastDispatchedValuesRef.current = mergedValues;
     }
   };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
     setCurrentTime(newTime);
+    currentTimeRef.current = newTime;
+    lastExecutedFrameRef.current = Math.floor(newTime * animation.fps);
     const interpolatedValues = getInterpolatedValues(newTime);
-    onUpdateControls(interpolatedValues);
-    onExecute();
+    const mergedValues = { ...baseControlValues, ...interpolatedValues };
+    onUpdateControls(mergedValues);
+    // Scrubbing always dispatches — user explicitly moved the playhead
+    lastDispatchedValuesRef.current = mergedValues;
+    onExecute(mergedValues, newTime);
   };
 
   const sortedKeyframes = [...animation.keyframes].sort((a, b) => a.time - b.time);
@@ -185,7 +269,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
       onClick={(e) => e.stopPropagation()}
     >
       <div style={{ fontWeight: '600', marginBottom: '8px', color: '#374151' }}>
-        🎬 Animation
+        Animation
       </div>
 
       {/* Playback Controls */}
@@ -203,7 +287,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
             fontSize: '14px'
           }}
         >
-          {isPlaying ? '⏸' : '▶'}
+          {isPlaying ? 'Pause' : 'Play'}
         </button>
 
         <button
@@ -219,10 +303,11 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
             fontSize: '14px'
           }}
         >
-          ⏹
+          Stop
         </button>
 
         <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '8px' }}>
+          {/* Debug: {animation.id} */}
           {currentTime.toFixed(2)}s / {animation.duration.toFixed(2)}s
         </span>
 
@@ -280,7 +365,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
                   fontSize: '10px'
                 }}
               >
-                ✕
+                X
               </button>
             )}
           </div>

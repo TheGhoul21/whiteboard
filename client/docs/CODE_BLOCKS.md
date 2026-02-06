@@ -213,6 +213,50 @@ animate([
 
 **See:** [Animation System](#animation-system) section for detailed examples
 
+#### `createAnimation()`
+Builder-style API for programmatic animations. Preferred over `animate()` for clarity.
+
+```javascript
+const anim = createAnimation();
+anim.addKeyframe(0,   { 'Step': 0 });
+anim.addKeyframe(2.5, { 'Step': 25 });
+anim.addKeyframe(5,   { 'Step': 50 });
+anim.save({ duration: 5.5, fps: 30, loop: false });
+```
+
+**Returns:** Builder object with:
+- `addKeyframe(time, values, label?)` — add a keyframe at the given time
+- `save(options?)` — finalize the animation. Options: `duration`, `fps`, `loop`
+
+#### `precompute(fn)`
+Register a function that pre-calculates all frame data once. Use with `render()` for high-performance animations where the computation is expensive.
+
+```javascript
+precompute((registerFrame) => {
+  for (let i = 0; i < 100; i++) {
+    const data = expensiveComputation(i);
+    registerFrame(i, data);  // Cache frame i
+  }
+});
+```
+
+**Parameters:**
+- `fn` (function): Receives a `registerFrame(index, data)` callback. Call it for each frame you want to cache.
+
+#### `render(fn)`
+Register a fast render function. Called per-frame during animation playback with cached frame data (if `precompute` was used) or with interpolated control values.
+
+```javascript
+render((frameData) => {
+  output.innerHTML = '';
+  const svg = d3.select(output).append('svg')...;
+  // Use frameData to draw — must be fast
+});
+```
+
+**Parameters:**
+- `fn` (function): Receives frame data (from `precompute`) or control values. Must update `output` DOM.
+
 #### `log(message)`
 Logs to the browser console for debugging.
 
@@ -229,16 +273,16 @@ log('Current value: ' + radius);
 3. Controls are created with `initial` values
 4. D3 code runs using those initial values
 5. Visualization appears to the right of the code block
-6. Controls appear below the code editor
+6. Controls appear on the visualization panel (click **Show Controls** on the viz)
 
-### Subsequent Runs
-1. Adjust control values in the UI (does NOT auto-execute)
-2. Click **Run** again
-3. Control functions return the adjusted values (NOT the initial values)
-4. D3 code runs with new values
-5. Visualization updates (Replace mode) or new one appears (Append mode)
+### Subsequent Runs (via controls)
+1. Open the controls panel on a visualization (click **Show Controls**)
+2. Adjust a control value (slider, checkbox, etc.)
+3. The visualization **auto-updates** — the source code re-executes with the new values
+4. Each visualization has its own independent copy of control values
 
-**Important:** Changing controls does NOT automatically re-execute. You must click **Run** to see changes.
+### Re-running from the code block
+Clicking **Run** in the code block toolbar always performs a full re-execution using the code block's own control values. In Replace mode this overwrites the existing viz; in Append mode it creates a new one.
 
 ## Default Example Code
 
@@ -351,11 +395,11 @@ Visualizations can have their own independent set of controls, allowing you to a
 ### Attaching Controls to Visualizations
 
 1. Create a code block with controls and generate a visualization
-2. Move the visualization away from the code block (optional)
-3. Select the visualization
-4. Click the **🎮** "Show Controls" button that appears
-5. A controls panel appears below the visualization
-6. Adjust controls and click **↻ Update** to refresh just that visualization
+2. Select the visualization
+3. Click **Show Controls** button that appears below it
+4. A controls panel appears below the visualization
+5. Adjust any control — the visualization **auto-updates** immediately
+6. Use **Refresh** to force a full re-execution, or **Reset** to restore defaults
 
 ### Independent Control Values
 
@@ -385,11 +429,13 @@ const intercept = slider('Intercept', -10, 10, 0, 0.5);
 
 ### Control Panel Features
 
-- **🎮 Icon**: Indicates controls panel
-- **↻ Update button**: Re-executes code with this visualization's control values
-- **✕ Close button**: Hides the controls panel
+- **Auto-execution**: Changing any control immediately re-executes the code and updates the visualization
+- **Refresh button**: Forces a full re-execution (useful after code changes)
+- **Reset button**: Restores control values to the code block defaults
+- **Close button**: Hides the controls panel
+- **Custom badge**: Shown when visualization parameters differ from code block defaults
 - **All control types**: Radio, color picker, sliders, toggles, etc.
-- **Real-time values**: Shows current values for this specific visualization
+- **Independent values**: Each visualization maintains its own snapshot of control values
 
 ## Animation System
 
@@ -399,20 +445,31 @@ Create smooth, keyframe-based animations for educational videos, parameter sweep
 
 Record keyframes by adjusting controls over time:
 
-1. **Start Recording**: Click **⏺** button in code block toolbar (turns red)
-2. **Set initial values**: Adjust controls to first position
-3. **Add keyframe**: Click **+ KF** button
-4. **Adjust and repeat**: Change controls, wait, click **+ KF** again
-5. **Stop Recording**: Click **⏺** again
-6. **Playback**: Use animation player controls that appear
+1. **Start Recording**: Click **Record** in the code block toolbar (turns red)
+2. **Set initial values**: Adjust controls on a visualization's control panel
+3. **Add keyframe**: Click **+ Keyframe** button on that visualization
+4. **Adjust and repeat**: Change controls, wait, click **+ Keyframe** again
+5. **Stop Recording**: Click **Stop** on the code block toolbar
+6. **Playback**: An animation player appears below the visualization
+
+### Per-Visualization Animation
+
+Each visualization has its **own independent animation player**. This means you can:
+- Append multiple visualizations from the same code block (e.g., different learning rates)
+- Each visualization gets its own Play/Pause/Stop, timeline scrubber, and keyframe list
+- Animations play independently — one viz can be playing while another is paused
+- Programmatic animations (via `createAnimation`) are automatically attached to each viz
 
 The animation player provides:
-- **▶ Play button**: Start animation playback
-- **⏸ Pause button**: Pause during playback
-- **⏹ Stop button**: Reset to beginning
+- **Play/Pause button**: Start or pause animation playback
+- **Stop button**: Reset to the beginning
 - **Timeline scrubber**: Drag to manually navigate time
 - **Keyframe list**: Shows all keyframes with timestamps
 - **Delete buttons**: Remove individual keyframes
+
+### Dirty-Flag Optimization
+
+The animation system uses a **dirty-flag** (a technique from game rendering) to avoid redundant work. When the interpolated control values haven't changed between frames — e.g., after a gradient descent has converged but the timeline hasn't finished — the re-execution is skipped entirely. This eliminates flickering and wasted CPU during the "frozen tail" of an animation.
 
 ### Programmatic Animations
 
@@ -845,9 +902,10 @@ const transformFn = transforms[Math.floor(transform)];
 - Verify SVG is actually generated: `log(output.innerHTML)`
 
 ### Controls not updating visualization
-- You must click **Run** after changing controls
-- Control changes do NOT auto-execute (performance/stability reasons)
+- Controls on the **visualization panel** auto-execute on change
+- If no visualization panel is open, click **Show Controls** on the viz
 - Check that your code uses the control variables
+- Use **Refresh** on the control panel to force a full re-execution
 
 ### Blank or partial output
 - SVG might be rendering outside viewBox
@@ -1602,12 +1660,11 @@ output.innerHTML = `<div>Created ${count} random points</div>`;
 
 ## Limitations
 
-- **No animation**: Visualizations are static PNG images, not live SVG
-- **No interactivity**: Rendered images don't respond to mouse events
+- **Static rendering**: Visualizations are rendered as PNG images, not live SVG (but animations re-render per frame)
+- **No mouse interactivity**: Rendered images don't respond to hover/click events
 - **Limited HTML**: Complex HTML layouts may not render correctly
 - **No network requests**: Sandbox blocks fetch/AJAX calls
-- **Manual execution**: Control changes require clicking Run
-- **Fixed dimensions**: Visualization size set at creation time
+- **Fixed dimensions**: Visualization size is set at creation time
 - **Sandbox restrictions**: No access to DOM outside `output` div
 
 ## Advanced Use Cases

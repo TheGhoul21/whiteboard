@@ -1795,7 +1795,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
     if (type === 'codeblock') {
       const cb = data as CodeBlockObj;
-      const animation = animations.find(a => a.codeBlockId === cb.id);
       const boardAPI = createBoardAPI(cb);
 
       return (
@@ -1806,32 +1805,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           onSelect={(e) => handleSmartObjectSelect(e, cb.id)}
           draggable={tool === 'select' && !isPanning.current}
           tool={tool}
-          animation={animation}
           onUpdate={(updates) => {
             console.log('[Whiteboard] CodeBlock onUpdate called with:', updates);
 
-            let newAnimations = animations;
             let newVizs = d3visualizations;
             const cleanUpdates = { ...updates };
 
-            // Handle programmatic animation creation
-            if ((updates as any).__programmaticAnimation) {
-              const newAnim = (updates as any).__programmaticAnimation;
-              // Remove ANY existing animation for this code block (or by ID) to ensure replacement
-              newAnimations = animations
-                .filter(a => a.codeBlockId !== newAnim.codeBlockId && a.id !== newAnim.id)
-                .concat(newAnim);
-
-              delete (cleanUpdates as any).__programmaticAnimation;
-            }
-
-            // Handle visualization content update
+            // Handle visualization content update first so newVizs is up to date
             if ((updates as any).__visualizationUpdate) {
               const vizUpdate = (updates as any).__visualizationUpdate;
-              newVizs = d3visualizations.map(v =>
+              newVizs = newVizs.map(v =>
                 v.id === vizUpdate.id ? { ...v, ...vizUpdate } : v
               );
               delete (cleanUpdates as any).__visualizationUpdate;
+            }
+
+            // Handle programmatic animation — attach to the target viz
+            if ((updates as any).__programmaticAnimation) {
+              const newAnim = (updates as any).__programmaticAnimation;
+              if ((updates as any).__visualizationUpdate) {
+                const vizId = (updates as any).__visualizationUpdate.id;
+                newVizs = newVizs.map(v => v.id === vizId ? { ...v, animation: newAnim } : v);
+              }
+              delete (cleanUpdates as any).__programmaticAnimation;
+              delete (cleanUpdates as any).animationId;
             }
 
             const newCodeBlocks = codeblocks.map(block =>
@@ -1840,98 +1837,29 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
             onUpdate({
               codeblocks: newCodeBlocks,
-              animations: newAnimations,
               d3visualizations: newVizs
             });
           }}
           onCreateVisualization={(viz, codeBlockUpdates) => {
             console.log('[Whiteboard] onCreateVisualization called with updates:', codeBlockUpdates);
+            // Extract animation and attach to the new viz (not global array)
+            let finalViz = viz;
+            const cleanCBUpdates = { ...codeBlockUpdates };
+            if ((cleanCBUpdates as any).__programmaticAnimation) {
+              finalViz = { ...viz, animation: (cleanCBUpdates as any).__programmaticAnimation };
+              delete (cleanCBUpdates as any).__programmaticAnimation;
+              delete (cleanCBUpdates as any).animationId;
+            }
+
             const newCodeBlocks = codeblocks.map(block =>
               block.id === cb.id
-                ? { ...block, outputId: viz.id, ...codeBlockUpdates }
+                ? { ...block, outputId: finalViz.id, ...cleanCBUpdates }
                 : block
             );
             onUpdate({
               codeblocks: newCodeBlocks,
-              d3visualizations: [...d3visualizations, viz]
+              d3visualizations: [...d3visualizations, finalViz]
             });
-          }}
-          onUpdateVisualization={(updates) => {
-            console.log('[Whiteboard] onUpdateVisualization called for:', updates.id);
-            const newVizs = d3visualizations.map(v => v.id === updates.id ? { ...v, ...updates } : v);
-            console.log('[Whiteboard] Updating with d3visualizations count:', newVizs.length);
-            onUpdate({ d3visualizations: newVizs });
-          }}
-          onSaveKeyframe={() => {
-            if (!cb.controls || !cb.isRecording) return;
-
-            // Calculate time since recording started
-            const currentTime = cb.recordingStartTime
-              ? (Date.now() - cb.recordingStartTime) / 1000
-              : 0;
-
-            // Capture current control values
-            const controlValues: Record<string, any> = {};
-            cb.controls.forEach(c => {
-              controlValues[c.label] = c.value;
-            });
-
-            // Create keyframe
-            const newKeyframe: Keyframe = {
-              id: `kf-${Date.now()}`,
-              time: currentTime,
-              controlValues
-            };
-
-            // Get or create animation
-            let targetAnimation = animation;
-            if (!targetAnimation) {
-              targetAnimation = {
-                id: `anim-${Date.now()}`,
-                codeBlockId: cb.id,
-                keyframes: [],
-                duration: 10,  // Default 10 seconds
-                fps: 30,
-                loop: false
-              };
-            }
-
-            // Update animation with new keyframe
-            const updatedAnimation = {
-              ...targetAnimation,
-              keyframes: [...targetAnimation.keyframes, newKeyframe]
-                .sort((a, b) => a.time - b.time),
-              duration: Math.max(targetAnimation.duration, currentTime + 1)
-            };
-
-            // Update animations array
-            const newAnimations = animations
-              .filter(a => a.id !== updatedAnimation.id)
-              .concat(updatedAnimation);
-
-            // Update code block with animation ID
-            const newCodeBlocks = codeblocks.map(block =>
-              block.id === cb.id ? { ...block, animationId: updatedAnimation.id } : block
-            );
-
-            onUpdate({
-              animations: newAnimations,
-              codeblocks: newCodeBlocks
-            });
-          }}
-          onDeleteKeyframe={(keyframeId) => {
-            if (!animation) return;
-
-            const updatedAnimation = {
-              ...animation,
-              keyframes: animation.keyframes.filter(kf => kf.id !== keyframeId)
-            };
-
-            const newAnimations = animations.map(a =>
-              a.id === animation.id ? updatedAnimation : a
-            );
-
-            onUpdate({ animations: newAnimations });
           }}
           boardAPI={boardAPI}
         />
@@ -1955,19 +1883,22 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           tool={tool}
           sourceCodeBlock={sourceCodeBlock}
           onUpdateControl={(controlLabel, value) => {
-            // Update only this visualization's control values
+            if (!sourceCodeBlock) return;
+            const newControlValues = { ...viz.controlValues, [controlLabel]: value };
             const newVizs = d3visualizations.map(v =>
-              v.id === viz.id
-                ? {
-                  ...v,
-                  controlValues: {
-                    ...v.controlValues,
-                    [controlLabel]: value
-                  }
-                }
-                : v
+              v.id === viz.id ? { ...v, controlValues: newControlValues } : v
             );
-            onUpdate({ d3visualizations: newVizs });
+            // Trigger re-execution of the source code block targeting this viz
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === sourceCodeBlock.id
+                ? {
+                  ...block,
+                  executionContext: { vizId: viz.id, controlValues: newControlValues },
+                  executionTrigger: Date.now()
+                }
+                : block
+            );
+            onUpdate({ d3visualizations: newVizs, codeblocks: newCodeBlocks });
           }}
           onRefresh={() => {
             if (!sourceCodeBlock) return;
@@ -1997,6 +1928,91 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             );
             onUpdate({ d3visualizations: newVizs });
           }}
+          onResetToDefaults={() => {
+            // Reset visualization control values to match code block defaults
+            if (!sourceCodeBlock?.controls) return;
+
+            const defaultValues: Record<string, any> = {};
+            sourceCodeBlock.controls.forEach(control => {
+              defaultValues[control.label] = control.value;
+            });
+
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id
+                ? { ...v, controlValues: defaultValues }
+                : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+          onAnimationFrame={(values, time) => {
+            if (!sourceCodeBlock) return;
+            const newCodeBlocks = codeblocks.map(block =>
+              block.id === sourceCodeBlock.id
+                ? {
+                  ...block,
+                  executionContext: {
+                    vizId: viz.id,
+                    controlValues: values,
+                    animationTime: time
+                  },
+                  executionTrigger: Date.now()
+                }
+                : block
+            );
+            onUpdate({ codeblocks: newCodeBlocks });
+          }}
+          onUpdateControls={(values) => {
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id
+                ? { ...v, controlValues: { ...v.controlValues, ...values } }
+                : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+          onSaveKeyframe={() => {
+            if (!sourceCodeBlock?.isRecording) return;
+            const currentTime = sourceCodeBlock.recordingStartTime
+              ? (Date.now() - sourceCodeBlock.recordingStartTime) / 1000
+              : 0;
+
+            const newKeyframe: Keyframe = {
+              id: `kf-${Date.now()}`,
+              time: currentTime,
+              controlValues: viz.controlValues || {}
+            };
+
+            const vizAnimation = viz.animation || {
+              id: `anim-${Date.now()}`,
+              codeBlockId: viz.sourceCodeBlockId,
+              keyframes: [],
+              duration: 10,
+              fps: 30,
+              loop: false
+            };
+
+            const updatedAnimation = {
+              ...vizAnimation,
+              keyframes: [...vizAnimation.keyframes, newKeyframe].sort((a, b) => a.time - b.time),
+              duration: Math.max(vizAnimation.duration, currentTime + 1)
+            };
+
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id ? { ...v, animation: updatedAnimation } : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+          onDeleteKeyframe={(keyframeId) => {
+            if (!viz.animation) return;
+            const updatedAnimation = {
+              ...viz.animation,
+              keyframes: viz.animation.keyframes.filter(kf => kf.id !== keyframeId)
+            };
+            const newVizs = d3visualizations.map(v =>
+              v.id === viz.id ? { ...v, animation: updatedAnimation } : v
+            );
+            onUpdate({ d3visualizations: newVizs });
+          }}
+          isSourceRecording={sourceCodeBlock?.isRecording ?? false}
         />
       );
     }

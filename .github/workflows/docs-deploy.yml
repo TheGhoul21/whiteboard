@@ -15,8 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,58 +42,10 @@ jobs:
           cd docs
           npm run docs:build
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          name: docs-dist
-          path: docs/.vitepress/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download docs artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docs-dist
-          path: docs-temp
-
-      - name: Deploy to gh-pages
-        run: |
-          # Configure git
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Check if gh-pages branch exists
-          if git ls-remote --heads origin gh-pages | grep -q gh-pages; then
-            echo "gh-pages branch exists, checking it out..."
-            git checkout gh-pages
-          else
-            echo "gh-pages branch doesn't exist, creating it..."
-            git checkout --orphan gh-pages
-            git rm -rf .
-            echo "# Whiteboard GitHub Pages" > README.md
-            git add README.md
-            git commit -m "Initialize gh-pages branch"
-            git push origin gh-pages
-          fi
-
-          # Remove old docs directory if it exists
-          rm -rf docs
-
-          # Move new docs into place
-          mv docs-temp docs
-
-          # Add and commit
-          git add docs
-          git commit -m "Deploy docs: ${{ github.sha }}" || echo "No changes to commit"
-
-          # Push to gh-pages
-          git push origin gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/.vitepress/dist
+          destination_dir: docs
+          keep_files: true  # Keep other files (like the demo) in gh-pages

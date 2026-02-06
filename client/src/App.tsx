@@ -674,16 +674,20 @@ svg.append('path')
          // Tool Hotkeys - prevent tool switching during spacebar pan
         if (isSpacebarPressed) return;
 
-        // Shift+Number keys for color palette selection
-        if (e.shiftKey && e.key >= '1' && e.key <= '8') {
-          e.preventDefault();
-          const colorIndex = parseInt(e.key) - 1;
-          const isDarkBg = background === 'black' || background === 'black-grid' || background === 'black-lines';
-          const colorPalette = isDarkBg ? DARK_COLORS : LIGHT_COLORS;
-          if (colorIndex < colorPalette.length) {
-            setColor(colorPalette[colorIndex]);
+        // Shift+Number keys for color palette selection (use code to avoid Shift+1 = '!' issue)
+        if (e.shiftKey && e.code.startsWith('Digit')) {
+          const digitMatch = e.code.match(/Digit(\d)/);
+          if (digitMatch) {
+            const digit = parseInt(digitMatch[1]);
+            if (digit >= 1 && digit <= 8) {
+              e.preventDefault();
+              const colorIndex = digit - 1;
+              const isDarkBg = background === 'black' || background === 'black-grid' || background === 'black-lines';
+              const colorPalette = isDarkBg ? DARK_COLORS : LIGHT_COLORS;
+              setColor(colorPalette[colorIndex]);
+              return;
+            }
           }
-          return;
         }
 
         // Number keys for primary tools

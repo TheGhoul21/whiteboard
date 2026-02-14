@@ -920,7 +920,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const dx = pointerPos.x - lastPointerPos.current.x;
       const dy = pointerPos.y - lastPointerPos.current.y;
       const newPos = { x: stage.x() + dx, y: stage.y() + dy };
-      setViewPos(newPos);
+      // Update stage position directly without triggering React re-render during pan
+      // This prevents 60+ re-renders per second and eliminates lag
+      stage.position(newPos);
       lastPointerPos.current = pointerPos;
       return;
     }
@@ -1010,6 +1012,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const handleMouseUp = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    // Sync viewPos state after panning ends (single update instead of 60+ during pan)
+    if (isPanning.current) {
+      const stage = e.target.getStage();
+      if (stage) {
+        setViewPos(stage.position());
+      }
+    }
+
     isPanning.current = false;
     lastPointerPos.current = null;
 

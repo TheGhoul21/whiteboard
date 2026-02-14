@@ -166,19 +166,20 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
 
   // Adaptive fountain pen settings based on stroke characteristics
   const points = getStroke(stroke, {
-    // Size adapts: much more dramatic variation
-    // Very fast = thin and light, choppy/slow = thick and bold
-    size: size * (isVeryFast ? 0.75 : isQuick ? 0.88 : isChoppy ? 1.25 : 1.15),
+    // Size adapts: less dramatic variation to prevent artifacts
+    // Very fast = slightly thinner, choppy/slow = slightly thicker
+    size: size * (isVeryFast ? 0.90 : isQuick ? 0.95 : isChoppy ? 1.15 : 1.05),
 
-    // Thinning: controls thick-to-thin contrast; higher = more calligraphic character
-    // Fast strokes get more variation, slow strokes stay more consistent
-    thinning: isVeryFast ? 0.55 : isQuick ? 0.68 : isChoppy ? 0.35 : 0.75,
+    // Thinning: reduced for fast strokes to prevent line breaking/splitting
+    // Lower thinning = more consistent line width = less artifacts
+    thinning: isVeryFast ? 0.35 : isQuick ? 0.45 : isChoppy ? 0.35 : 0.60,
 
-    // Smoothing: much less for fast strokes to show gesture, more for deliberate strokes
-    smoothing: isVeryFast ? 0.25 : isQuick ? 0.4 : isChoppy ? 0.7 : 0.58,
+    // Smoothing: increased for fast strokes to prevent jitter and artifacts
+    // Higher smoothing = smoother line = no multiple strokes appearance
+    smoothing: isVeryFast ? 0.65 : isQuick ? 0.70 : isChoppy ? 0.75 : 0.65,
 
-    // Streamline: more for long/fast strokes to maintain flow, less for choppy
-    streamline: isLong ? 0.7 : isVeryFast ? 0.6 : isQuick ? 0.52 : isChoppy ? 0.45 : 0.62,
+    // Streamline: higher values for fast strokes to maintain clean flow
+    streamline: isLong ? 0.75 : isVeryFast ? 0.75 : isQuick ? 0.70 : isChoppy ? 0.45 : 0.65,
 
     // Custom easing for elegant ink flow simulation
     easing: (t) => {
@@ -254,15 +255,17 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
   let result = d;
 
   // Ink blob: when the pen hesitates before moving, ink pools at the nib contact point.
-  if (slowStart) {
-    const blobR = size * 0.8;
+  // Reduced size to prevent excessive pooling that looks like multiple strokes
+  if (slowStart && !isVeryFast) {
+    const blobR = size * 0.5;
     const sx = stroke[0][0];
     const sy = stroke[0][1];
     result = `M ${sx - blobR} ${sy} A ${blobR} ${blobR} 0 1 0 ${sx + blobR} ${sy} A ${blobR} ${blobR} 0 1 0 ${sx - blobR} ${sy} Z ` + result;
   }
 
   // Ink spray: small splatter dots for a characteristic textured feel
-  if (spray) {
+  // Disable spray for fast strokes to prevent "multiple strokes" appearance
+  if (spray && !isVeryFast && !isQuick) {
     const dots = sprayDots(stroke, size);
     if (dots) result += ' ' + dots;
   }

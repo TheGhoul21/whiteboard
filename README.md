@@ -2,6 +2,14 @@
 
 A powerful, infinite-canvas whiteboard application designed specifically for creating educational content, coding tutorials, and math explanations. Built with **React**, **Konva**, and **Tauri**.
 
+## 📸 Screenshots
+
+<div align="center">
+  <img src="docs/images/neural-network-sketch.png" alt="Neural Network Sketch" width="48%">
+  <img src="docs/images/code-visualization.png" alt="Code Visualization" width="48%">
+  <p><em>Left: Hand-drawn neural network diagram. Right: Interactive Python code with D3.js visualizations.</em></p>
+</div>
+
 ## 🖥️ Desktop App (NEW!)
 
 The whiteboard now includes a **Tauri desktop app** with dual-window support for video recording:

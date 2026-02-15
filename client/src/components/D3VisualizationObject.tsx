@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import { Html } from 'react-konva-utils';
 import Konva from 'konva';
@@ -47,6 +47,17 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const isSelectMode = tool === 'select';
 
+  // Blob URL tracking and cleanup for Fix 3
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const revokeBlobUrl = useCallback((url: string) => {
+    if (blobUrlsRef.current.has(url)) {
+      URL.revokeObjectURL(url);
+      blobUrlsRef.current.delete(url);
+    }
+  }, []);
+
   // Check if visualization params differ from code block defaults
   const hasCustomParams = React.useMemo(() => {
     if (!sourceCodeBlock?.controls || !obj.controlValues) return false;
@@ -63,11 +74,29 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
     });
   }, [sourceCodeBlock?.controls, obj.controlValues]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      blobUrlsRef.current.clear();
+    };
+  }, []);
+
   // Convert HTML content to image
   useEffect(() => {
+    // Abort previous render
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    // Revoke old blob URLs
+    blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    blobUrlsRef.current.clear();
+
     if (!obj.content) return;
 
     const svgToDataUrl = async () => {
+      if (signal.aborted) return;
       // Create a temporary div to render the content
       const tempDiv = document.createElement('div');
       tempDiv.style.width = `${obj.width}px`;
@@ -121,37 +150,53 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
         const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
         const url = URL.createObjectURL(svgBlob);
 
+        // Track blob URL
+        blobUrlsRef.current.add(url);
+
         const img = new window.Image();
         img.onload = () => {
+          if (signal.aborted) {
+            revokeBlobUrl(url);
+            return;
+          }
           ctx.drawImage(img, 0, 0);
-          URL.revokeObjectURL(url);
+          revokeBlobUrl(url);
 
           const konvaImg = new window.Image();
           konvaImg.src = canvas.toDataURL('image/png');
           konvaImg.onload = () => {
-            setImage(konvaImg);
+            if (!signal.aborted) {
+              setImage(konvaImg);
+            }
           };
         };
         img.onerror = () => {
-          URL.revokeObjectURL(url);
+          revokeBlobUrl(url);
+          if (signal.aborted) return;
           // SVG blob failed to load — fall back to HTML-in-foreignObject
-          renderHtmlToCanvas(obj.content, obj.width, obj.height).then(dataUrl => {
-            if (dataUrl) {
+          renderHtmlToCanvas(obj.content, obj.width, obj.height, signal).then(dataUrl => {
+            if (dataUrl && !signal.aborted) {
               const konvaImg = new window.Image();
               konvaImg.src = dataUrl;
-              konvaImg.onload = () => { setImage(konvaImg); };
+              konvaImg.onload = () => {
+                if (!signal.aborted) {
+                  setImage(konvaImg);
+                }
+              };
             }
           });
         };
         img.src = url;
       } else {
         // No SVG, render as HTML using foreignObject in SVG
-        const dataUrl = await renderHtmlToCanvas(obj.content, obj.width, obj.height);
-        if (dataUrl) {
+        const dataUrl = await renderHtmlToCanvas(obj.content, obj.width, obj.height, signal);
+        if (dataUrl && !signal.aborted) {
           const konvaImg = new window.Image();
           konvaImg.src = dataUrl;
           konvaImg.onload = () => {
-            setImage(konvaImg);
+            if (!signal.aborted) {
+              setImage(konvaImg);
+            }
           };
         }
       }
@@ -160,11 +205,16 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
     };
 
     svgToDataUrl();
-  }, [obj.content, obj.width, obj.height]);
+  }, [obj.content, obj.width, obj.height, revokeBlobUrl]);
 
   // Helper function to render HTML to canvas
-  const renderHtmlToCanvas = (html: string, width: number, height: number): Promise<string | null> => {
+  const renderHtmlToCanvas = (html: string, width: number, height: number, signal: AbortSignal): Promise<string | null> => {
     return new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve(null);
+        return;
+      }
+
       // Use 2x scale for high-DPI rendering
       const scale = 2;
       const svg = `
@@ -181,7 +231,15 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
       const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
 
+      // Track blob URL
+      blobUrlsRef.current.add(url);
+
       img.onload = () => {
+        if (signal.aborted) {
+          revokeBlobUrl(url);
+          resolve(null);
+          return;
+        }
         const canvas = document.createElement('canvas');
         canvas.width = width * scale;
         canvas.height = height * scale;
@@ -194,14 +252,14 @@ export const D3VisualizationObject: React.FC<D3VisualizationObjectProps> = ({
         } else {
           resolve(null);
         }
-        URL.revokeObjectURL(url);
+        revokeBlobUrl(url);
       };
-      
+
       img.onerror = () => {
+        revokeBlobUrl(url);
         resolve(null);
-        URL.revokeObjectURL(url);
       };
-      
+
       img.src = url;
     });
   };

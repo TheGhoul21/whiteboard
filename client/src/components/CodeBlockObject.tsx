@@ -10,6 +10,7 @@ import { EditorState } from '@codemirror/state';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { basicSetup } from 'codemirror';
+import { createExecutionGuard, wrapCodeWithTimeoutGuards, TimeoutError } from '../utils/sandboxTimeout';
 
 interface CodeBlockObjectProps {
   obj: CodeBlockObj;
@@ -45,6 +46,15 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
   const renderCallbackRef = useRef<((values: Record<string, any>) => void) | null>(null);
   const outputRef = useRef<HTMLDivElement | null>(null);
   const precomputeRenderEngineRef = useRef<any>(null);
+  const executionTimeoutRef = useRef<number | null>(null);
+
+  // Execution state machine and queue for Fix 2
+  type ExecutionState = 'idle' | 'precomputing' | 'rendering';
+  const executionStateRef = useRef<ExecutionState>('idle');
+  const executionQueueRef = useRef<Array<{
+    controlValues?: Record<string, number>;
+    includeControlsUpdate?: boolean;
+  }>>([]);
 
   // Watch for external execution triggers from visualization controls
   useEffect(() => {
@@ -64,6 +74,10 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
       if (precomputeRenderEngineRef.current) {
         precomputeRenderEngineRef.current.clear();
         precomputeRenderEngineRef.current = null;
+      }
+      // Clear execution timeout
+      if (executionTimeoutRef.current) {
+        clearTimeout(executionTimeoutRef.current);
       }
     };
   }, []);
@@ -134,69 +148,75 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
     }
   };
 
-  const executeCode = (controlValuesOverride?: Record<string, any>, includeControlsUpdate = false) => {
+  // Queue processing for execution state machine
+  const processNextExecution = async () => {
+    if (executionQueueRef.current.length === 0) {
+      executionStateRef.current = 'idle';
+      return;
+    }
+
+    const next = executionQueueRef.current.shift()!;
+    await executeCodeInternal(next.controlValues, next.includeControlsUpdate);
+    await processNextExecution(); // BUG FIX: Must await recursive call
+  };
+
+  const executeCode = async (controlValuesOverride?: Record<string, any>, includeControlsUpdate = false) => {
+    const animationTime = obj.executionContext?.animationTime;
+
+    // FAST PATH: Animation frame
+    if (animationTime !== undefined && precomputeRenderEngineRef.current) {
+      if (executionStateRef.current === 'precomputing') {
+        console.warn('[CodeBlock] Precompute in progress, skipping animation frame');
+        return;
+      }
+
+      const engine = precomputeRenderEngineRef.current;
+      if (engine.isReady) {
+        const frameIndex = Math.floor(animationTime * (engine.fps || 30));
+        const success = engine.executeRender(frameIndex);
+
+        if (success && outputRef.current) {
+          const outputContent = outputRef.current.innerHTML;
+          const vizId = obj.executionContext?.vizId || obj.outputId;
+          if (vizId) {
+            onUpdate({
+              lastExecuted: Date.now(),
+              executionContext: undefined,
+              __visualizationUpdate: { id: vizId, content: outputContent }
+            } as any);
+          }
+        }
+        return;
+      }
+    }
+
+    // SLOW PATH: Queue execution
+    executionQueueRef.current.push({ controlValues: controlValuesOverride, includeControlsUpdate });
+
+    if (executionStateRef.current === 'idle') {
+      await processNextExecution(); // BUG FIX: Must await to ensure execution completes
+    }
+  };
+
+  const executeCodeInternal = async (controlValuesOverride?: Record<string, any>, includeControlsUpdate = false) => {
     console.log('[CodeBlock] Starting execution...', obj.id);
     setIsExecuting(true);
 
     // Cancel any running animation frames from previous execution
     if (activeRafsRef.current.size > 0) {
-      // console.log(`[CodeBlock] Cleaning up ${activeRafsRef.current.size} active RAFs`);
       activeRafsRef.current.forEach(id => window.cancelAnimationFrame(id));
       activeRafsRef.current.clear();
     }
 
+    // SLOW PATH: Full Execution (Setup)
+    // Determine execution state based on whether we'll use precompute
+    const willUsePrecompute = precomputeRenderEngineRef.current !== null;
+    executionStateRef.current = willUsePrecompute ? 'precomputing' : 'rendering';
 
-
-    // Execute immediately (synchronously) to prevent animation frame pile-up
     try {
-      // FAST PATH: Animation frame or control update that can skip full re-execution.
-      // Only activates when animationTime is present (animation-driven) OR a render
-      // callback is registered.  User-initiated control changes (no animationTime)
-      // fall through to the slow path so precomputed data is re-generated.
-      if (controlValuesOverride && outputRef.current) {
-        const isAnimationFrame = obj.executionContext?.animationTime !== undefined;
-
-        // Precompute/render engine fast path (animation frames only)
-        if (isAnimationFrame && precomputeRenderEngineRef.current?.isReady) {
-          const fps = precomputeRenderEngineRef.current.fps;
-          const frameIndex = Math.floor(obj.executionContext!.animationTime! * fps);
-          precomputeRenderEngineRef.current.executeRender(frameIndex);
-
-          const outputContent = outputRef.current.innerHTML;
-          const vizId = obj.executionContext?.vizId || obj.outputId;
-          if (vizId) {
-            onUpdate({
-              lastExecuted: Date.now(),
-              executionContext: undefined,
-              __visualizationUpdate: { id: vizId, content: outputContent }
-            } as any);
-          }
-          setIsExecuting(false);
-          return;
-        }
-
-        // Simple render-callback fast path (animation frames only)
-        if (isAnimationFrame && renderCallbackRef.current) {
-          renderCallbackRef.current(controlValuesOverride);
-
-          const outputContent = outputRef.current.innerHTML;
-          const vizId = obj.executionContext?.vizId || obj.outputId;
-          if (vizId) {
-            onUpdate({
-              lastExecuted: Date.now(),
-              executionContext: undefined,
-              __visualizationUpdate: { id: vizId, content: outputContent }
-            } as any);
-          }
-          setIsExecuting(false);
-          return;
-        }
-      }
-
-      // SLOW PATH: Full Execution (Setup)
       // Reset render callback for new run
       renderCallbackRef.current = null;
-      
+
       // Reset precompute/render engine for full re-execution
       if (precomputeRenderEngineRef.current) {
         precomputeRenderEngineRef.current.clear();
@@ -469,35 +489,71 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
         }
       };
 
-      // 3. Execute user code
+      // 3. Execute user code with timeout protection
       console.log('[CodeBlock] Executing user code...');
-      const userFunction = new Function(
-        'output', 'd3', 'slider', 'input', 'checkbox',
-        'radio', 'color', 'select', 'range', 'button', 'toggle', 'animate', 'createAnimation', 'requestAnimationFrame', 'cancelAnimationFrame', 'render', 'log', 'board', 'precompute',
-        obj.code
-      );
+      const timeoutMs = 5000;
+      const guard = createExecutionGuard(timeoutMs);
+      const wrappedCode = wrapCodeWithTimeoutGuards(obj.code, '__execGuard');
 
-      userFunction(
-        sandbox.output,
-        sandbox.d3,
-        sandbox.slider,
-        sandbox.input,
-        sandbox.checkbox,
-        sandbox.radio,
-        sandbox.color,
-        sandbox.select,
-        sandbox.range,
-        sandbox.button,
-        sandbox.toggle,
-        sandbox.animate,
-        sandbox.createAnimation,
-        sandbox.requestAnimationFrame,
-        sandbox.cancelAnimationFrame,
-        sandbox.render,
-        sandbox.log,
-        sandbox.board,
-        sandbox.precompute
-      );
+      // Set fallback timeout
+      executionTimeoutRef.current = window.setTimeout(() => {
+        console.warn('[CodeBlock] Fallback timeout triggered');
+      }, timeoutMs);
+
+      // Add guard to sandbox
+      (sandbox as any).__execGuard = guard;
+
+      // Wrap execution in Promise.race for timeout protection
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          try {
+            const userFunction = new Function(
+              'output', 'd3', 'slider', 'input', 'checkbox',
+              'radio', 'color', 'select', 'range', 'button', 'toggle', 'animate', 'createAnimation', 'requestAnimationFrame', 'cancelAnimationFrame', 'render', 'log', 'board', 'precompute', '__execGuard',
+              wrappedCode
+            );
+
+            userFunction(
+              sandbox.output,
+              sandbox.d3,
+              sandbox.slider,
+              sandbox.input,
+              sandbox.checkbox,
+              sandbox.radio,
+              sandbox.color,
+              sandbox.select,
+              sandbox.range,
+              sandbox.button,
+              sandbox.toggle,
+              sandbox.animate,
+              sandbox.createAnimation,
+              sandbox.requestAnimationFrame,
+              sandbox.cancelAnimationFrame,
+              sandbox.render,
+              sandbox.log,
+              sandbox.board,
+              sandbox.precompute,
+              (sandbox as any).__execGuard
+            );
+            resolve();
+          } catch (err: any) {
+            if (err.message === 'TIMEOUT') {
+              reject(new TimeoutError(timeoutMs));
+            } else {
+              reject(err);
+            }
+          }
+        }),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new TimeoutError(timeoutMs)), timeoutMs + 100)
+        )
+      ]);
+
+      // Clear timeout after successful execution
+      if (executionTimeoutRef.current) {
+        clearTimeout(executionTimeoutRef.current);
+        executionTimeoutRef.current = null;
+      }
 
       // 4. Execute precompute/render if using the new API
       if (precomputeRenderEngineRef.current) {
@@ -634,13 +690,30 @@ export const CodeBlockObject: React.FC<CodeBlockObjectProps> = ({
 
       console.log('[CodeBlock] Execution completed successfully');
       setIsExecuting(false);
+      executionStateRef.current = 'idle';
     } catch (error) {
       console.error('[CodeBlock] Execution error:', error);
-      onUpdate({
-        error: error instanceof Error ? error.message : String(error),
-        lastExecuted: Date.now()
-      });
+
+      // Clear timeout on error
+      if (executionTimeoutRef.current) {
+        clearTimeout(executionTimeoutRef.current);
+        executionTimeoutRef.current = null;
+      }
+
+      // Special handling for timeout errors
+      if (error instanceof TimeoutError) {
+        onUpdate({
+          error: `Timeout: Code execution exceeded ${5000}ms. Check for infinite loops.`,
+          lastExecuted: Date.now()
+        });
+      } else {
+        onUpdate({
+          error: error instanceof Error ? error.message : String(error),
+          lastExecuted: Date.now()
+        });
+      }
       setIsExecuting(false);
+      executionStateRef.current = 'idle';
     }
   };
 

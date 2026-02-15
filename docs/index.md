@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: Whiteboard
-  text: Infinite Canvas for Education
-  tagline: A powerful whiteboard with animations, LaTeX, code blocks, and dual-window presentation mode
+  text: Professional Canvas for Educators
+  tagline: The infinite-canvas whiteboard with magic animations, LaTeX, and dual-window recording mode.
   actions:
     - theme: brand
       text: Get Started
@@ -13,61 +13,46 @@ hero:
       text: Download Desktop App
       link: /desktop/installation
     - theme: alt
-      text: Try Demo
+      text: Try Web Demo
       link: https://TheGhoul21.github.io/whiteboard/
 
 features:
-  - icon: 🎨
-    title: Professional Drawing Tools
-    details: Pen, smooth pen with calligraphy, highlighter, eraser, shapes, and smart objects for creating beautiful educational content.
-
-  - icon: 🎬
-    title: Dual-Window Presentation Mode
-    details: Desktop app with separate control and presentation windows. Perfect for recording educational videos with OBS Studio.
-
-  - icon: ✨
-    title: Spotlight & Laser Pointer
-    details: Real-time spotlight highlighting and laser pointer with smooth fade animations for professional presentations.
-
-  - icon: 📐
-    title: LaTeX Math Support
-    details: Render beautiful mathematical equations using KaTeX. Perfect for STEM education and technical content.
-
+  - icon: 🪄
+    title: Magic Animations
+    details: Draw rough shapes and watch them morph into perfect geometry. Record control changes to create interactive explanations.
+  - icon: 🖥️
+    title: Pro Recording Mode
+    details: Dual-window system for OBS. A control window for you, and a clean, frameless presentation window for your audience.
   - icon: 💻
-    title: Syntax-Highlighted Code Blocks
-    details: Paste code snippets with automatic syntax highlighting using CodeMirror. Supports all major programming languages.
-
-  - icon: 🎯
-    title: Smart Object Detection
-    details: Automatically detect and perfect shapes, circles, squares, and create smooth animations for engaging lessons.
-
-  - icon: 📹
-    title: OBS Integration
-    details: Frameless presentation window with custom backgrounds, always-on-top mode, and chroma key support for green screen.
-
-  - icon: ⚡
-    title: Infinite Canvas
-    details: Unlimited workspace with smooth pan and zoom. Create complex diagrams and multi-page presentations.
+    title: Live Code & Math
+    details: Paste Markdown code blocks with syntax highlighting and render beautiful LaTeX equations instantly on the canvas.
 ---
 
-## Why Whiteboard?
+## Why choose Whiteboard?
 
-Whiteboard was built for educators who want to create engaging video content. Whether you're teaching math, programming, or design, Whiteboard gives you professional tools to bring your ideas to life.
+Most whiteboards are for "collaboration". **This one is for teaching.** It's built specifically for creators who make educational videos, coding tutorials, and math lessons.
 
-### Perfect for YouTube Educators
+### 🚀 Quick Start in 30 seconds
 
-- **Clean Recording Setup**: Separate control and presentation windows mean your students see only the content, not the UI
-- **Professional Effects**: Spotlight highlighting and laser pointer keep attention focused
-- **Smooth Animations**: Create engaging visual explanations with magic animations
-- **All Content Types**: Math equations, code blocks, diagrams, and handwriting in one tool
+::: tabs
 
-### Desktop App Features
+== Web (No Install)
+1. Go to [whiteboard.app](https://TheGhoul21.github.io/whiteboard/)
+2. Press **P** to start drawing.
+3. Paste some code or LaTeX to see the magic.
 
-The Tauri desktop app provides advanced features for professional content creation:
+== Desktop (Pro)
+1. [Download the App](/desktop/installation)
+2. Open and click **"Open Presentation"**.
+3. Capture the second window in OBS for a clean, professional look.
 
-- **Dual-Window Architecture**: Control window for you, presentation window for your audience
-- **Real-Time Sync**: < 5ms latency between windows for smooth recording
-- **OBS Ready**: Frameless window capture with custom backgrounds
-- **Cross-Platform**: Available for macOS (Intel & Apple Silicon), Windows, and Linux
+:::
 
-[Get Started →](/guide/getting-started) | [Download Desktop App →](/desktop/installation)
+## Key Highlights
+
+- **Infinite Canvas:** Never run out of space for your explanations.
+- **Smart Objects:** Paste images, code, and math directly from your clipboard.
+- **Timeline & Keyframes:** Create complex animations by recording your interactions.
+- **Laser & Spotlight:** Guide your students' attention with professional presentation tools.
+
+[Explore all features →](/features/)

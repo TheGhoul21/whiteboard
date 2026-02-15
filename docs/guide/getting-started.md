@@ -1,71 +1,55 @@
 # Getting Started
 
-Welcome to Whiteboard! This guide will help you get up and running in minutes.
+Whiteboard is designed to be intuitive. You can start in your browser or install the desktop app for a more professional setup.
 
-## Installation
+## 1. Choose Your Version
 
-Download and install the Whiteboard desktop app for advanced features like dual-window presentation mode and OBS integration.
+| Web Version | Desktop App (Recommended) |
+| :--- | :--- |
+| **Zero Install.** Works in any modern browser. | **Dual-Window Mode.** Perfect for recording. |
+| No OBS window capture optimization. | Optimized for OBS (Frameless window). |
+| Limited performance on complex canvases. | Native performance via Tauri/Rust. |
+| [Launch Web App](https://TheGhoul21.github.io/whiteboard/) | [Download for Desktop](/desktop/installation) |
 
-**Features:**
-- Dual-window presentation mode
-- Laser pointer & spotlight tools
-- OBS integration
-- Better performance
-- Offline access
-- Cross-platform (macOS, Windows, Linux)
+---
 
-[Install Desktop App →](/desktop/installation)
+## 2. The Golden Rules of Whiteboard
 
-## First Steps
+To get the most out of Whiteboard, remember these three interactions:
 
-### 1. Launch the Application
+### 🖋️ Drawing is the Core
+Press **P** for the Pen or **S** for the Smooth Pen. Everything you draw is vector-based, so it stays crisp at any zoom level.
 
-**Web Version:**
-Simply open the URL in your browser.
+### 📋 Paste is Magic
+Don't look for "Insert" buttons. Just **Cmd+V** (or Ctrl+V) anything:
+- **Text:** Becomes a text object.
+- **Code:** Paste code blocks (e.g., ` ```python ... ``` `) for syntax highlighting.
+- **Math:** Paste LaTeX (e.g., `$$ E=mc^2 $$`) for beautiful formulas.
+- **Images:** Pastes directly onto the canvas.
 
-**Desktop App:**
-Open the installed application from your Applications folder (macOS), Start Menu (Windows), or application launcher (Linux).
+### 🎥 Control vs. Presentation
+If you're using the Desktop App, click the **Open Presentation** button in the bottom right.
+- **Control Window:** Where you have the toolbar, frames, and settings.
+- **Presentation Window:** A clean view showing *only* the canvas. This is what you record in OBS.
 
-### 2. Basic Controls
+---
 
-The toolbar at the top contains all your drawing tools:
+## 3. Essential Shortcuts
 
-- **Hand Tool** (H): Pan the canvas
-- **Pen** (P): Basic drawing
-- **Smooth Pen** (S): Calligraphy-style drawing
-- **Highlighter** (L): Semi-transparent highlighting
-- **Eraser** (E): Remove strokes
-- **Shapes**: Rectangle, Circle, Arrow
-- **Text** (T): Add text objects
-- **Laser Pointer**: Temporary pointer that fades
-- **Spotlight** (Shift+P): Highlight areas with spotlight effect
+Master these to draw while you talk without looking for buttons:
 
-### 3. Your First Drawing
-
-1. Select the **Pen tool** (or press `P`)
-2. Choose a color from the color picker
-3. Draw on the canvas with your mouse or stylus
-4. Use the **Hand tool** (`H`) to pan around
-5. Scroll to zoom in/out
-
-### 4. Save Your Work
-
-Whiteboard automatically saves your canvas to browser localStorage every 10 seconds. Your work persists across sessions.
-
-To export:
-- **JSON**: Save/load complete canvas state
-- **PNG**: Export current view as image (coming soon)
-- **PDF**: Export to PDF document (coming soon)
+| Shortcut | Action |
+| :--- | :--- |
+| **H** | Hand Tool (Pan the canvas) |
+| **P** | Pen Tool |
+| **S** | Smooth Pen (Fountain pen style) |
+| **E** | Eraser |
+| **Cmd + Z** | Undo (Essential for perfection!) |
+| **Space (Hold)** | Quick Pan |
+| **Scroll / Pinch** | Zoom in/out |
 
 ## Next Steps
 
-- [Learn Basic Drawing →](/guide/basic-drawing)
-- [Explore Smart Objects →](/guide/smart-objects)
-- [Master Keyboard Shortcuts →](/guide/shortcuts)
-- [Set Up Presentation Mode →](/desktop/presentation-mode) (Desktop only)
-
-## Need Help?
-
-- Check the [Features documentation](/features/)
-- Join our community discussions on GitHub
-- Report bugs or request features via [GitHub Issues](https://github.com/TheGhoul21/whiteboard/issues)
+- [Detailed Installation Guide](/desktop/installation)
+- [How to create Animations](/features/animations)
+- [Working with Code & Math](/features/code-blocks)

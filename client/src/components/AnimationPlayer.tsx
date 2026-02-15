@@ -136,6 +136,10 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   const onUpdateControlsRef = useRef(onUpdateControls);
   onUpdateControlsRef.current = onUpdateControls;
 
+  // Fix 4: Use ref for baseControlValues to avoid stale closures
+  const baseControlValuesRef = useRef(baseControlValues);
+  baseControlValuesRef.current = baseControlValues;
+
   // Animation loop
   const animate = (timestamp: number) => {
     if (!isPlaying) return;
@@ -177,7 +181,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
 
     // Merge keyframe values on top of base control values so that controls
     // the user manually edited (but that aren't animated) keep their value
-    const mergedValues = { ...baseControlValues, ...interpolatedValues };
+    const mergedValues = { ...baseControlValuesRef.current, ...interpolatedValues };
 
     // Throttle UI updates to avoid overloading React with re-renders
     // Only update UI controls every ~50ms (20fps) or if stopped
@@ -235,7 +239,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
     lastDispatchedValuesRef.current = {};
     if (animation.keyframes.length > 0) {
       const firstKf = [...animation.keyframes].sort((a, b) => a.time - b.time)[0];
-      const mergedValues = { ...baseControlValues, ...firstKf.controlValues };
+      const mergedValues = { ...baseControlValuesRef.current, ...firstKf.controlValues };
       onUpdateControls(mergedValues);
       onExecute(mergedValues, 0);
       lastExecutedFrameRef.current = 0;
@@ -249,7 +253,7 @@ export const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
     currentTimeRef.current = newTime;
     lastExecutedFrameRef.current = Math.floor(newTime * animation.fps);
     const interpolatedValues = getInterpolatedValues(newTime);
-    const mergedValues = { ...baseControlValues, ...interpolatedValues };
+    const mergedValues = { ...baseControlValuesRef.current, ...interpolatedValues };
     onUpdateControls(mergedValues);
     // Scrubbing always dispatches — user explicitly moved the playhead
     lastDispatchedValuesRef.current = mergedValues;

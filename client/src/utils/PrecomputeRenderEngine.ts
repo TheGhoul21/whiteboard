@@ -43,6 +43,7 @@ export class PrecomputeRenderEngine {
   private renderFn: RenderFunction | null = null;
   private config: PrecomputeRenderConfig;
   private isPrecomputing = false;
+  private isExecutingFrame = false;
   private currentControlValues: Record<string, any> = {};
 
   constructor(config: PrecomputeRenderConfig) {
@@ -100,29 +101,46 @@ export class PrecomputeRenderEngine {
    * Returns true if successful, false if no render function registered
    */
   executeRender(frameIndex: number): boolean {
+    if (this.isPrecomputing) {
+      throw new Error('Cannot executeRender while precomputing');
+    }
+
     if (!this.renderFn) return false;
 
-    // Support fractional frame indices for smooth animation
-    const frameData = this.frameCache.getInterpolated(frameIndex);
-    
-    if (frameData === undefined) {
-      console.warn(`[PrecomputeRenderEngine] No frame data available for frame ${frameIndex}`);
-      // Still call render function with null so it can handle empty state
+    if (this.isExecutingFrame) {
+      console.warn('[PrecomputeRenderEngine] Frame execution in progress, skipping');
+      return false;
+    }
+
+    this.isExecutingFrame = true;
+
+    try {
+      // Support fractional frame indices for smooth animation
+      const frameData = this.frameCache.getInterpolated(frameIndex);
+
+      if (frameData === undefined) {
+        console.warn(`[PrecomputeRenderEngine] No frame data available for frame ${frameIndex}`);
+        // Still call render function with null so it can handle empty state
+        try {
+          this.renderFn(frameIndex, null, this.currentControlValues);
+          return true;
+        } catch (error) {
+          console.error(`[PrecomputeRenderEngine] Render error at frame ${frameIndex}:`, error);
+          return false;
+        } finally {
+          this.isExecutingFrame = false;
+        }
+      }
+
       try {
-        this.renderFn(frameIndex, null, this.currentControlValues);
+        this.renderFn(frameIndex, frameData, this.currentControlValues);
         return true;
       } catch (error) {
         console.error(`[PrecomputeRenderEngine] Render error at frame ${frameIndex}:`, error);
         return false;
       }
-    }
-
-    try {
-      this.renderFn(frameIndex, frameData, this.currentControlValues);
-      return true;
-    } catch (error) {
-      console.error(`[PrecomputeRenderEngine] Render error at frame ${frameIndex}:`, error);
-      return false;
+    } finally {
+      this.isExecutingFrame = false;
     }
   }
 

@@ -18,21 +18,27 @@ export default defineConfig({
     sidebar: {
       '/guide/': [
         {
-          text: 'Introduction',
+          text: 'Getting Started',
           items: [
-            { text: 'Getting Started', link: '/guide/getting-started' },
-            { text: 'Basic Drawing', link: '/guide/basic-drawing' },
-            { text: 'Smart Objects', link: '/guide/smart-objects' },
+            { text: 'Introduction', link: '/guide/getting-started' },
+            { text: 'Installation', link: '/desktop/installation' },
             { text: 'Keyboard Shortcuts', link: '/guide/shortcuts' }
+          ]
+        },
+        {
+          text: 'The Canvas',
+          items: [
+            { text: 'Drawing Tools', link: '/features/drawing-tools' },
+            { text: 'Frames & Bookmarks', link: '/features/frames' },
+            { text: 'Smart Objects', link: '/guide/smart-objects' }
           ]
         }
       ],
       '/desktop/': [
         {
-          text: 'Desktop App',
+          text: 'Desktop & Recording',
           items: [
-            { text: 'Overview', link: '/desktop/' },
-            { text: 'Installation', link: '/desktop/installation' },
+            { text: 'Setup Overview', link: '/desktop/' },
             { text: 'Presentation Mode', link: '/desktop/presentation-mode' },
             { text: 'OBS Integration', link: '/desktop/obs-integration' },
             { text: 'Laser & Spotlight', link: '/desktop/laser-spotlight' }
@@ -41,14 +47,11 @@ export default defineConfig({
       ],
       '/features/': [
         {
-          text: 'Features',
+          text: 'Advanced Features',
           items: [
-            { text: 'Overview', link: '/features/' },
-            { text: 'Drawing Tools', link: '/features/drawing-tools' },
-            { text: 'Animations', link: '/features/animations' },
-            { text: 'Code Blocks', link: '/features/code-blocks' },
-            { text: 'LaTeX Math', link: '/features/latex' },
-            { text: 'Frames & Navigation', link: '/features/frames' }
+            { text: 'Magic Animations', link: '/features/animations' },
+            { text: 'Code & Math', link: '/features/code-blocks' },
+            { text: 'LaTeX Formulas', link: '/features/latex' }
           ]
         }
       ]

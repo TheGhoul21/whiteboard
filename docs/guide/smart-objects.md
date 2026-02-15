@@ -303,7 +303,7 @@ Convert rough drawings to perfect shapes:
 Some content is automatically detected:
 
 **LaTeX:**
-- Detects `$...$` syntax
+- Detects ` ```latex ... ``` ` syntax
 - Renders immediately
 - Editable as equation
 
@@ -325,7 +325,7 @@ Some content is automatically detected:
 ### For LaTeX
 
 1. ✅ Test complex equations separately
-2. ✅ Use `$$...$$` for display mode
+2. ✅ Use triple backticks for pasting
 3. ✅ Keep equations readable at zoom level
 4. ✅ Position away from drawing area
 5. ✅ Double-check syntax
@@ -351,7 +351,7 @@ Some content is automatically detected:
 ### LaTeX not rendering
 
 **Check:**
-- Wrapped in `$...$` or `$$...$$`
+- Wrapped in ` ```latex ... ``` ` or `$$...$$`
 - Valid LaTeX syntax
 - Supported by KaTeX
 

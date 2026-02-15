@@ -24,7 +24,7 @@ Press **P** for the Pen or **S** for the Smooth Pen. Everything you draw is vect
 Don't look for "Insert" buttons. Just **Cmd+V** (or Ctrl+V) anything:
 - **Text:** Becomes a text object.
 - **Code:** Paste code blocks (e.g., ` ```python ... ``` `) for syntax highlighting.
-- **Math:** Paste LaTeX (e.g., `$$ E=mc^2 $$`) for beautiful formulas.
+- **Math:** Paste LaTeX (e.g., ` ```latex E=mc^2 ``` `) for beautiful formulas.
 - **Images:** Pastes directly onto the canvas.
 
 ### 🎥 Control vs. Presentation

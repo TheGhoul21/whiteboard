@@ -59,7 +59,7 @@ Unlike drawn strokes, smart objects:
 ### Adding LaTeX
 
 **Paste LaTeX equation:**
-1. Copy LaTeX code (e.g., `E = mc^2`)
+1. Copy LaTeX code using triple backticks (e.g., ` ```latex E = mc^2 ``` `)
 2. Paste on canvas (`Cmd/Ctrl + V`)
 3. If LaTeX syntax detected → renders as equation
 4. Otherwise → appears as plain text
@@ -67,38 +67,38 @@ Unlike drawn strokes, smart objects:
 **Manual creation:**
 1. Use text tool
 2. Type LaTeX syntax
-3. Wrap in `$` for inline or `$$` for block
+3. Wrap in `$$` for block display
 
 ### LaTeX Examples
 
 **Inline math:**
 ```latex
-$E = mc^2$
+E = mc^2
 ```
 
 **Fractions:**
 ```latex
-$\frac{a}{b}$
+\frac{a}{b}
 ```
 
 **Greek letters:**
 ```latex
-$\alpha, \beta, \gamma, \Delta, \Omega$
+\alpha, \beta, \gamma, \Delta, \Omega
 ```
 
 **Integrals:**
 ```latex
-$\int_{0}^{\infty} e^{-x} dx$
+\int_{0}^{\infty} e^{-x} dx
 ```
 
 **Matrices:**
 ```latex
-$$\begin{bmatrix} a & b \\ c & d \end{bmatrix}$$
+\begin{bmatrix} a & b \\ c & d \end{bmatrix}
 ```
 
 **Complex equations:**
 ```latex
-$$\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}$$
+\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
 ```
 
 ### LaTeX Rendering

@@ -36,7 +36,7 @@ For advanced users, Whiteboard supports "Smart D3 Objects". These are JavaScript
 Math and Code go hand-in-hand. Whiteboard renders beautiful equations using **KaTeX**.
 
 ### How to add Math:
-1. Copy a LaTeX string (e.g., `$$ \sum_{i=1}^{n} i = \frac{n(n+1)}{2} $$`).
+1. Copy a LaTeX string (e.g., ` ```latex \sum_{i=1}^{n} i = \frac{n(n+1)}{2} ``` `).
 2. **Paste** it on the board.
 3. It instantly becomes a crisp, scalable math object.
 

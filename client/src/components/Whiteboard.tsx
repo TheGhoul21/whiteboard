@@ -25,7 +25,7 @@ interface WhiteboardProps {
   d3visualizations: D3VisualizationObj[];
   animations: Animation[];
   background: BackgroundType;
-  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }>, overwrite?: boolean) => void;
+  onUpdate: (data: Partial<{ strokes: Stroke[], images: ImageObj[], texts: TextObj[], shapes: ShapeObj[], latex: LatexObj[], codes: CodeObj[], notes: NoteObj[], codeblocks: CodeBlockObj[], d3visualizations: D3VisualizationObj[], animations: Animation[] }>, overwrite?: boolean, skipSync?: boolean) => void;
   stageRef: React.RefObject<Konva.Stage>;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
@@ -65,13 +65,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   pointerPos: pointerPosProp,
   setPointerPos: setPointerPosProp
 }) => {
-  console.log('[Whiteboard] Render with:', {
-    codeblocks: codeblocks.length,
-    d3visualizations: d3visualizations.length,
-    strokes: strokes.length,
-    images: images.length
-  });
-
   // Prevent browser back/forward navigation gestures
   useEffect(() => {
     const preventNavigation = (e: WheelEvent) => {
@@ -988,7 +981,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
       const newStrokes = [...strokes];
       newStrokes[newStrokes.length - 1] = { ...lastStroke, points: newPoints };
-      onUpdate({ strokes: newStrokes }, true);
+      onUpdate({ strokes: newStrokes }, true, true);
     }
 
     if (tool === 'rect' || tool === 'circle') {
@@ -998,7 +991,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const h = pos.y - lastShape.y;
       const newShapes = [...shapes];
       newShapes[newShapes.length - 1] = { ...lastShape, width: w, height: h };
-      onUpdate({ shapes: newShapes }, true);
+      onUpdate({ shapes: newShapes }, true, true);
     }
 
     if (tool === 'arrow') {
@@ -1007,7 +1000,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const newPoints = [0, 0, pos.x - lastShape.x, pos.y - lastShape.y];
       const newShapes = [...shapes];
       newShapes[newShapes.length - 1] = { ...lastShape, points: newPoints };
-      onUpdate({ shapes: newShapes }, true);
+      onUpdate({ shapes: newShapes }, true, true);
     }
   };
 
@@ -1168,7 +1161,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     isSelecting.current = false;
 
     if (tool !== 'select' && tool !== 'hand') {
-      onUpdate({}, false);
+      onUpdate({}, false, false);
       if (tool === 'text') setTool('select');
     }
   };

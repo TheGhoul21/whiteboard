@@ -1,8 +1,10 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { isPresentationWindow } from '../utils/platform';
+import { isPresentationWindow, isTauri } from '../utils/platform';
+import { emit, listen } from '@tauri-apps/api/event';
 
 const SYNC_KEY = 'whiteboard-sync';
 const AUTOSAVE_KEY = 'whiteboard-autosave';
+const THROTTLE_MS = 50; // Sync every 50ms (20fps) for non-critical state
 
 /**
  * Hook for synchronizing state between control and presentation windows via localStorage
@@ -12,27 +14,56 @@ export function useWindowSync<T>(
   setState: (state: T) => void,
   enabled: boolean = true
 ) {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const lastSyncTime = useRef<number>(0);
+  const pendingData = useRef<T | null>(null);
+  const throttleTimeout = useRef<ReturnType<typeof setTimeout>>();
   const isPresentation = isPresentationWindow();
 
-  // Control window: Write state to localStorage (immediate for real-time sync)
-  const syncToStorage = useCallback((data: T) => {
+  // Control window: Write state to localStorage with throttling
+  const syncToStorage = useCallback((data: T, immediate = false) => {
     if (!enabled || isPresentation) return;
 
-    try {
-      const serialized = JSON.stringify(data);
-      localStorage.setItem(SYNC_KEY, serialized);
+    const performSync = (syncData: T) => {
+      try {
+        const serialized = JSON.stringify(syncData);
+        localStorage.setItem(SYNC_KEY, serialized);
 
-      // Manually trigger storage event for same-origin windows
-      window.dispatchEvent(new StorageEvent('storage', {
-        key: SYNC_KEY,
-        newValue: serialized,
-        oldValue: localStorage.getItem(SYNC_KEY),
-        storageArea: localStorage,
-        url: window.location.href
-      }));
-    } catch (error) {
-      console.error('Failed to sync state to localStorage:', error);
+        // Manually trigger storage event for same-origin windows
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: SYNC_KEY,
+          newValue: serialized,
+          oldValue: localStorage.getItem(SYNC_KEY),
+          storageArea: localStorage,
+          url: window.location.href
+        }));
+        
+        lastSyncTime.current = Date.now();
+        pendingData.current = null;
+      } catch (error) {
+        console.error('Failed to sync state to localStorage:', error);
+      }
+    };
+
+    if (immediate) {
+      if (throttleTimeout.current) clearTimeout(throttleTimeout.current);
+      performSync(data);
+      return;
+    }
+
+    pendingData.current = data;
+    const now = Date.now();
+    const timeSinceLastSync = now - lastSyncTime.current;
+
+    if (timeSinceLastSync >= THROTTLE_MS) {
+      if (throttleTimeout.current) clearTimeout(throttleTimeout.current);
+      performSync(data);
+    } else if (!throttleTimeout.current) {
+      throttleTimeout.current = setTimeout(() => {
+        throttleTimeout.current = undefined;
+        if (pendingData.current) {
+          performSync(pendingData.current);
+        }
+      }, THROTTLE_MS - timeSinceLastSync);
     }
   }, [enabled, isPresentation]);
 
@@ -52,24 +83,15 @@ export function useWindowSync<T>(
     };
 
     // Initial load from localStorage
-    // Try sync key first, fall back to autosave key
     try {
       let stored = localStorage.getItem(SYNC_KEY);
-
-      // If sync key is empty, try loading from autosave
       if (!stored) {
-        console.log('[Presentation] No sync data, loading from autosave');
         const autosaved = localStorage.getItem(AUTOSAVE_KEY);
         if (autosaved) {
-          const autosaveData = JSON.parse(autosaved);
-          // Autosave has partial state, need to merge with defaults
-          setState(autosaveData as T);
-          console.log('[Presentation] Loaded initial state from autosave');
+          setState(JSON.parse(autosaved) as T);
         }
       } else {
-        const initialState = JSON.parse(stored) as T;
-        setState(initialState);
-        console.log('[Presentation] Loaded initial state from sync');
+        setState(JSON.parse(stored) as T);
       }
     } catch (error) {
       console.error('Failed to load initial state:', error);
@@ -84,11 +106,32 @@ export function useWindowSync<T>(
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+      if (throttleTimeout.current) {
+        clearTimeout(throttleTimeout.current);
       }
     };
   }, []);
 
   return { syncToStorage };
+}
+
+/**
+ * High-frequency event emitter for Tauri (Cursor, Spotlight)
+ */
+export async function emitSyncEvent(name: string, data: any) {
+  if (isTauri()) {
+    await emit(name, data);
+  }
+}
+
+/**
+ * High-frequency event listener for Tauri
+ */
+export async function listenSyncEvent(name: string, callback: (data: any) => void) {
+  if (isTauri()) {
+    return await listen(name, (event) => {
+      callback(event.payload);
+    });
+  }
+  return () => {};
 }

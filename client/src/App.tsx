@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Whiteboard } from './components/Whiteboard';
 import { Toolbar } from './components/Toolbar';
 import { FrameManager } from './components/FrameManager';
@@ -139,7 +139,7 @@ function App() {
   }, [setState]);
 
   // Create fullState inside useMemo to avoid recreating on every render
-  const fullState: FullAppState = {
+  const fullState: FullAppState = useMemo(() => ({
     ...state,
     tool,
     color,
@@ -147,53 +147,47 @@ function App() {
     background,
     zoom,
     viewPos,
-    pointerPos,
-  };
+    pointerPos: null, // Don't sync pointerPos via localStorage
+  }), [state, tool, color, toolSizes, background, zoom, viewPos]);
 
   const { syncToStorage } = useWindowSync(fullState, setFullState, windowMode !== 'web');
 
+  const skipSyncRef = useRef(false);
+
   // Control window: Sync state changes to presentation window
-  // Sync whenever core state changes
   useEffect(() => {
-    if (windowMode === 'control') {
-      const stateToSync: FullAppState = {
-        ...state,
-        tool,
-        color,
-        toolSizes,
-        background,
-        zoom,
-        viewPos,
-        pointerPos,
-      };
-      console.log('[Control] Syncing state to presentation window');
-      syncToStorage(stateToSync);
+    if (windowMode === 'control' && !skipSyncRef.current) {
+      syncToStorage(fullState);
     }
-  }, [state, tool, color, toolSizes, background, zoom, viewPos, pointerPos, windowMode, syncToStorage]);
+  }, [fullState, windowMode, syncToStorage]);
 
-  const handleUpdate = useCallback((newState: Partial<AppState>, overwrite = false) => {
-     console.log('[App] handleUpdate called with:', {
-       keys: Object.keys(newState),
-       codeblocks: newState.codeblocks?.length,
-       d3visualizations: newState.d3visualizations?.length,
-       overwrite,
-       caller: new Error().stack?.split('\n')[2]?.trim() // Track who called this
-     });
+  // High-frequency sync for pointerPos (Spotlight/Cursor)
+  useEffect(() => {
+    if (windowMode === 'control' && pointerPos) {
+      import('./hooks/useWindowSync').then(({ emitSyncEvent }) => {
+        emitSyncEvent('pointer-move', pointerPos);
+      });
+    }
+  }, [pointerPos, windowMode]);
 
-     // GUARD: Ignore empty updates that would corrupt state
-     if (Object.keys(newState).length === 0) {
-       console.warn('[App] BLOCKED empty update - ignoring');
-       return;
-     }
+  useEffect(() => {
+    if (windowMode === 'presentation') {
+      let unlisten: (() => void) | undefined;
+      import('./hooks/useWindowSync').then(({ listenSyncEvent }) => {
+        listenSyncEvent('pointer-move', (pos: any) => {
+          setPointerPos(pos);
+        }).then(u => { unlisten = u; });
+      });
+      return () => { if (unlisten) unlisten(); };
+    }
+  }, [windowMode]);
 
-     setState(prev => {
-       const next = { ...prev, ...newState };
-       console.log('[App] State after update:', {
-         codeblocks: next.codeblocks?.length,
-         d3visualizations: next.d3visualizations?.length
-       });
-       return next;
-     }, overwrite);
+  const handleUpdate = useCallback((newState: Partial<AppState>, overwrite = false, skipSync = false) => {
+     // GUARD: Ignore empty updates
+     if (Object.keys(newState).length === 0) return;
+
+     skipSyncRef.current = skipSync;
+     setState(prev => ({ ...prev, ...newState }), overwrite);
      hasUnsavedChanges.current = true;
   }, [setState]);
 

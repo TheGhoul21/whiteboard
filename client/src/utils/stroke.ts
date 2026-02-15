@@ -164,41 +164,36 @@ export function getCalligraphyPath(stroke: number[][], size: number = 8, spray: 
   // Slow start: ink pools at the nib when pen hesitates before moving
   const slowStart = speeds.length > 1 && speeds[1] < 2;
 
-  // Adaptive fountain pen settings based on stroke characteristics
-  const points = getStroke(stroke, {
-    // Size adapts: less dramatic variation to prevent artifacts
-    // Very fast = slightly thinner, choppy/slow = slightly thicker
-    size: size * (isVeryFast ? 0.90 : isQuick ? 0.95 : isChoppy ? 1.15 : 1.05),
-
-    // Thinning: reduced for fast strokes to prevent line breaking/splitting
-    // Lower thinning = more consistent line width = less artifacts
-    thinning: isVeryFast ? 0.35 : isQuick ? 0.45 : isChoppy ? 0.35 : 0.60,
-
-    // Smoothing: increased for fast strokes to prevent jitter and artifacts
-    // Higher smoothing = smoother line = no multiple strokes appearance
-    smoothing: isVeryFast ? 0.65 : isQuick ? 0.70 : isChoppy ? 0.75 : 0.65,
-
-    // Streamline: higher values for fast strokes to maintain clean flow
-    streamline: isLong ? 0.75 : isVeryFast ? 0.75 : isQuick ? 0.70 : isChoppy ? 0.45 : 0.65,
-
-    // Custom easing for elegant ink flow simulation
-    easing: (t) => {
-      // Fast strokes: more linear for crisp response
-      // Slow strokes: more easing for smooth flow
-      if (isVeryFast) {
-        return t * (2 - t); // Ease-out quadratic
-      } else if (isChoppy) {
-        // Very smooth for deliberate strokes
-        return t * t * (3 - 2 * t); // Smoothstep
-      } else {
-        // Default: smooth step with slight asymmetry
-        const t2 = t * t;
-        const t3 = t2 * t;
-        return 3 * t2 - 2 * t3 + 0.1 * Math.sin(t * Math.PI);
-      }
-    },
-
-    start: {
+      // Adaptive fountain pen settings based on stroke characteristics
+    const points = getStroke(stroke, {
+      // Size adapts: less dramatic variation to prevent artifacts
+      size: size * (isVeryFast ? 0.95 : isQuick ? 1.0 : isChoppy ? 1.15 : 1.05),
+  
+      // Thinning: reduced for fast strokes to prevent line breaking/splitting
+      thinning: isVeryFast ? 0.25 : isQuick ? 0.35 : isChoppy ? 0.35 : 0.60,
+  
+      // Smoothing: balanced for fast strokes - too high = lag, too low = jitter
+      smoothing: isVeryFast ? 0.55 : isQuick ? 0.60 : isChoppy ? 0.75 : 0.65,
+  
+      // Streamline: higher values for fast strokes to maintain clean flow
+      streamline: isLong ? 0.75 : isVeryFast ? 0.80 : isQuick ? 0.70 : isChoppy ? 0.45 : 0.65,
+  
+      // Custom easing for elegant ink flow simulation
+      easing: (t) => {
+        // Fast strokes: more linear for crisp response
+        if (isVeryFast) {
+          return t; 
+        } else if (isChoppy) {
+          // Very smooth for deliberate strokes
+          return t * t * (3 - 2 * t); // Smoothstep
+        } else {
+          // Default: smooth step with slight asymmetry
+          const t2 = t * t;
+          const t3 = t2 * t;
+          return 3 * t2 - 2 * t3 + 0.1 * Math.sin(t * Math.PI);
+        }
+      },
+      start: {
       // Slow start: short taper so the stroke begins heavy (ink-loaded nib)
       // Fast start: longer taper for crisp entry
       taper: slowStart
